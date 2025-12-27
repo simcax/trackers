@@ -2,7 +2,9 @@ import os
 
 from flask import Flask
 
+from trackers.error_handling import register_error_handlers
 from trackers.routes.tracker_routes import tracker_bp
+from trackers.routes.tracker_value_routes import tracker_value_bp
 
 
 def create_app(test_config=None):
@@ -26,8 +28,14 @@ def create_app(test_config=None):
     except OSError:
         pass
 
+    # register error handlers
+    register_error_handlers(app)
+
     # register tracker blueprint
     app.register_blueprint(tracker_bp)
+
+    # register tracker value blueprint
+    app.register_blueprint(tracker_value_bp)
 
     # a simple page that says hello
     @app.route("/hello")

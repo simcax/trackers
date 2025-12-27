@@ -178,3 +178,101 @@ def test_add_tracker_invalid_json(client, db_session):
         400,
         500,
     ]  # Either bad request or server error is acceptable
+
+
+def test_tracker_value_routes_registered(client, db_session):
+    """
+    Test that tracker value routes are properly registered and accessible.
+
+    This test verifies basic route registration and connectivity without
+    requiring a full database setup.
+
+    Validates: All API requirements - route registration
+    """
+    # First create a tracker to use for testing
+    tracker_response = client.post(
+        "/add_tracker",
+        json={"name": "Route Test Tracker", "description": "For testing routes"},
+    )
+    assert tracker_response.status_code == 201
+    tracker_id = tracker_response.json["tracker"]["id"]
+
+    # Test POST /api/trackers/{tracker_id}/values (should fail validation but route should exist)
+    response = client.post(f"/api/trackers/{tracker_id}/values", json={})
+    assert (
+        response.status_code == 400
+    )  # Bad request due to missing data, but route exists
+    assert "error" in response.json
+
+    # Test GET /api/trackers/{tracker_id}/values/{date} (should return 404 for non-existent value)
+    response = client.get(f"/api/trackers/{tracker_id}/values/2024-01-01")
+    assert response.status_code == 404  # Not found, but route exists
+    assert "error" in response.json
+
+    # Test GET /api/trackers/{tracker_id}/values (should return empty array)
+    response = client.get(f"/api/trackers/{tracker_id}/values")
+    assert response.status_code == 200  # Should work and return empty array
+    assert "values" in response.json
+    assert response.json["values"] == []
+
+    # Test PUT /api/trackers/{tracker_id}/values/{date} (should fail validation but route should exist)
+    response = client.put(f"/api/trackers/{tracker_id}/values/2024-01-01", json={})
+    assert (
+        response.status_code == 400
+    )  # Bad request due to missing data, but route exists
+    assert "error" in response.json
+
+    # Test DELETE /api/trackers/{tracker_id}/values/{date} (should return 404 for non-existent value)
+    response = client.delete(f"/api/trackers/{tracker_id}/values/2024-01-01")
+    assert response.status_code == 404  # Not found, but route exists
+    assert "error" in response.json
+
+    # Test DELETE /api/trackers/{tracker_id}/values (should work and return 0 deleted)
+    response = client.delete(f"/api/trackers/{tracker_id}/values")
+    assert response.status_code == 200  # Should work
+    assert "deleted_count" in response.json
+    assert response.json["deleted_count"] == 0
+
+
+def test_tracker_value_routes_error_handling(client, db_session):
+    """
+    Test that tracker value routes have proper error handling for non-existent trackers.
+
+    Validates: Requirements 2.2, 3.2, 4.2, 5.2 - error handling
+    """
+    non_existent_tracker_id = 99999
+
+    # Test all routes with non-existent tracker ID
+    routes_to_test = [
+        (
+            "POST",
+            f"/api/trackers/{non_existent_tracker_id}/values",
+            {"date": "2024-01-01", "value": "test"},
+        ),
+        ("GET", f"/api/trackers/{non_existent_tracker_id}/values/2024-01-01", None),
+        ("GET", f"/api/trackers/{non_existent_tracker_id}/values", None),
+        (
+            "PUT",
+            f"/api/trackers/{non_existent_tracker_id}/values/2024-01-01",
+            {"value": "test"},
+        ),
+        ("DELETE", f"/api/trackers/{non_existent_tracker_id}/values/2024-01-01", None),
+        ("DELETE", f"/api/trackers/{non_existent_tracker_id}/values", None),
+    ]
+
+    for method, url, json_data in routes_to_test:
+        if method == "POST":
+            response = client.post(url, json=json_data)
+        elif method == "GET":
+            response = client.get(url)
+        elif method == "PUT":
+            response = client.put(url, json=json_data)
+        elif method == "DELETE":
+            response = client.delete(url)
+
+        # All should return 404 for non-existent tracker
+        assert response.status_code == 404, (
+            f"Route {method} {url} should return 404 for non-existent tracker"
+        )
+        assert "error" in response.json
+        assert "not found" in response.json["error"]["message"].lower()

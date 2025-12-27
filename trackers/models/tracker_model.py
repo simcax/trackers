@@ -13,6 +13,12 @@ class TrackerModel(Base):
 
     items = relationship("ItemModel", back_populates="tracker")
     logs = relationship("LogModel", back_populates="tracker")
+    values = relationship(
+        "TrackerValueModel",
+        back_populates="tracker",
+        cascade="all, delete-orphan",
+        order_by="TrackerValueModel.date.desc()",
+    )
 
 
 class ItemModel(Base):
