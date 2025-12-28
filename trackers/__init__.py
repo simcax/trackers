@@ -6,6 +6,7 @@ from trackers.error_handling import register_error_handlers
 from trackers.routes.health_routes import health_bp
 from trackers.routes.tracker_routes import tracker_bp
 from trackers.routes.tracker_value_routes import tracker_value_bp
+from trackers.security.api_key_auth import init_security
 
 
 def create_app(test_config=None):
@@ -33,6 +34,9 @@ def create_app(test_config=None):
     if not test_config:  # Skip migration during testing (Requirements: 4.3)
         _run_migration(app)
 
+    # Initialize security system with comprehensive logging and validation (Requirements: 3.1, 3.2, 4.1)
+    _initialize_security_system(app)
+
     # register error handlers
     register_error_handlers(app)
 
@@ -51,6 +55,115 @@ def create_app(test_config=None):
         return "Hello, World!"
 
     return app
+
+
+def _initialize_security_system(app):
+    """
+    Initialize and integrate the security system with Flask application.
+
+    This function provides comprehensive security system integration by:
+    - Loading and validating security configuration at startup
+    - Integrating key validator and security logger with Flask app context
+    - Adding detailed startup logging for security configuration status
+    - Ensuring proper error handling during security initialization
+
+    Requirements: 3.1, 3.2, 4.1
+    """
+    try:
+        app.logger.info("Initializing API key security system...")
+
+        # Initialize security system using the existing init_security function
+        security_config = init_security(app)
+
+        # Validate security system components are properly initialized
+        if not hasattr(app, "security_config"):
+            app.logger.error("Security configuration failed to initialize")
+            raise RuntimeError("Security configuration initialization failed")
+
+        if not hasattr(app, "key_validator"):
+            app.logger.error("Key validator failed to initialize")
+            raise RuntimeError("Key validator initialization failed")
+
+        if not hasattr(app, "security_logger"):
+            app.logger.error("Security logger failed to initialize")
+            raise RuntimeError("Security logger initialization failed")
+
+        # Log detailed security configuration status
+        if security_config.authentication_enabled:
+            app.logger.info("✓ API key authentication is ENABLED")
+            app.logger.info(f"✓ Loaded {len(security_config.api_keys)} valid API keys")
+            app.logger.info(
+                f"✓ Protected routes: {len(security_config.get_protected_routes())} patterns"
+            )
+            app.logger.info(
+                f"✓ Public routes: {len(security_config.get_public_routes())} patterns"
+            )
+
+            # Log route protection details for debugging
+            app.logger.debug(
+                f"Protected route patterns: {', '.join(security_config.get_protected_routes())}"
+            )
+            app.logger.debug(
+                f"Public route patterns: {', '.join(security_config.get_public_routes())}"
+            )
+
+            # Validate key security requirements
+            valid_keys = 0
+            for key in security_config.api_keys:
+                if security_config.validate_key_security(key):
+                    valid_keys += 1
+
+            if valid_keys != len(security_config.api_keys):
+                app.logger.warning(
+                    f"Some API keys failed security validation ({valid_keys}/{len(security_config.api_keys)} valid)"
+                )
+            else:
+                app.logger.info("✓ All API keys meet security requirements")
+
+        else:
+            app.logger.warning("⚠ API key authentication is DISABLED")
+            app.logger.warning(
+                "⚠ No valid API keys configured - all endpoints are publicly accessible"
+            )
+            app.logger.info(
+                "To enable authentication, set the API_KEYS environment variable"
+            )
+
+        # Log security system readiness
+        app.logger.info("API key security system initialization completed successfully")
+
+        return security_config
+
+    except Exception as e:
+        # Ensure security initialization failures are properly logged and handled
+        app.logger.error(f"Failed to initialize security system: {e}")
+        app.logger.error(
+            "Application will continue startup but security may not function properly"
+        )
+
+        # Try to initialize a minimal security system to prevent crashes
+        try:
+            from trackers.security.api_key_auth import (
+                KeyValidator,
+                SecurityConfig,
+                SecurityLogger,
+            )
+
+            # Create minimal security configuration
+            minimal_config = SecurityConfig()
+            app.security_config = minimal_config
+            app.key_validator = KeyValidator(minimal_config)
+            app.security_logger = SecurityLogger(app.logger)
+
+            app.logger.warning("Minimal security system initialized as fallback")
+
+        except Exception as fallback_error:
+            app.logger.error(
+                f"Failed to initialize fallback security system: {fallback_error}"
+            )
+            app.logger.error(
+                "Security system is not available - authentication will not work"
+            )
 
 
 def _run_migration(app):

@@ -1,4 +1,6 @@
 import logging
+import os
+from unittest.mock import patch
 
 import pytest
 from dotenv import load_dotenv
@@ -31,13 +33,15 @@ from trackers import create_app
 
 @pytest.fixture
 def app():
-    app = create_app(
-        {
-            "TESTING": True,
-        }
-    )
+    # Disable API key authentication for tests by default
+    with patch.dict(os.environ, {"API_KEYS": ""}, clear=False):
+        app = create_app(
+            {
+                "TESTING": True,
+            }
+        )
 
-    yield app
+        yield app
 
 
 @pytest.fixture

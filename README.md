@@ -20,7 +20,7 @@ uv sync
 2. Set up environment variables:
 ```bash
 cp .env.example .env
-# Edit .env with your database credentials
+# Edit .env with your database credentials and API key configuration
 ```
 
 ### Database Setup
@@ -120,6 +120,254 @@ FLASK_PORT=5000         # Server port (default: 5000)
 FLASK_DEBUG=true        # Debug mode (default: true)
 ```
 
+### API Key Authentication
+
+The application includes comprehensive API key authentication to secure all API endpoints. Authentication is configured through environment variables and can be enabled or disabled as needed.
+
+#### Quick Start
+
+1. **Generate API Keys:**
+```bash
+# Generate a single secure API key
+python scripts/generate-api-key.py
+
+# Generate multiple keys
+python scripts/generate-api-key.py --count 3
+
+# Generate keys with custom length
+python scripts/generate-api-key.py --length 32
+```
+
+2. **Configure API Keys:**
+```bash
+# Add to your .env file
+API_KEYS=your-generated-key-here,another-key-here
+
+# Or use environment-specific keys (recommended for production)
+API_KEYS_DEVELOPMENT=dev-key-1,dev-key-2
+API_KEYS_PRODUCTION=prod-key-1,prod-key-2
+```
+
+3. **Test Authentication:**
+```bash
+# Without authentication (will fail with 401)
+curl http://localhost:5000/api/trackers
+
+# With valid API key
+curl -H "Authorization: Bearer your-generated-key-here" http://localhost:5000/api/trackers
+```
+
+#### Authentication Configuration
+
+**Basic Configuration:**
+```bash
+# Single API key
+API_KEYS=your-secret-api-key-here
+
+# Multiple API keys (comma-separated)
+API_KEYS=key1,key2,key3
+
+# Disable authentication for development
+# (leave API_KEYS empty or unset)
+```
+
+**Environment-Specific Configuration (Recommended):**
+```bash
+# Development keys
+API_KEYS_DEVELOPMENT=dev-key-1,dev-key-2
+
+# Staging keys  
+API_KEYS_STAGING=staging-key-1,staging-key-2
+
+# Production keys
+API_KEYS_PRODUCTION=prod-key-1,prod-key-2
+```
+
+**Advanced Security Settings:**
+```bash
+# Enable automatic key rotation (default: true)
+ENABLE_API_KEY_ROTATION=true
+
+# Key reload interval in seconds (default: 300)
+API_KEY_RELOAD_INTERVAL=300
+
+# Trust proxy headers for accurate IP logging
+TRUST_PROXY_HEADERS=true
+
+# Require HTTPS in production (auto-enabled)
+REQUIRE_HTTPS=true
+```
+
+#### Using API Keys
+
+**Authorization Header Format:**
+```bash
+Authorization: Bearer your-api-key-here
+```
+
+**Example API Calls:**
+```bash
+# List all trackers
+curl -H "Authorization: Bearer your-key" http://localhost:5000/api/trackers
+
+# Create a new tracker
+curl -X POST \
+  -H "Authorization: Bearer your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Tracker", "description": "Track something"}' \
+  http://localhost:5000/add_tracker
+
+# Get tracker values
+curl -H "Authorization: Bearer your-key" \
+  http://localhost:5000/api/trackers/1/values
+
+# Create tracker value
+curl -X POST \
+  -H "Authorization: Bearer your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"date": "2024-01-15", "value": 42}' \
+  http://localhost:5000/api/trackers/1/values
+```
+
+#### Protected vs Public Endpoints
+
+**Protected Endpoints (require API key):**
+- All `/api/*` endpoints
+- All `/trackers/*` endpoints  
+- All `/tracker-values/*` endpoints
+- `/add_tracker` endpoint
+
+**Public Endpoints (no API key required):**
+- `/health` - Basic health check
+- `/health/*` - All health check endpoints
+- `/status` - Application status
+- `/ping` - Simple ping endpoint
+- `/hello` - Legacy health check
+
+#### Route Protection Configuration
+
+You can customize which routes require authentication:
+
+```bash
+# Custom protected routes (comma-separated patterns)
+PROTECTED_ROUTES=/api/*,/custom/*,/admin/*
+
+# Custom public routes (comma-separated patterns)
+PUBLIC_ROUTES=/health,/status,/public/*
+```
+
+#### Security Best Practices
+
+**API Key Requirements:**
+- Minimum 16 characters length
+- Use cryptographically secure random generation
+- Avoid predictable patterns or dictionary words
+- Rotate keys regularly (especially in production)
+
+**Key Management:**
+- Store keys in environment variables, never in code
+- Use different keys for different environments
+- Implement key rotation policies
+- Monitor authentication logs for suspicious activity
+
+**Production Security:**
+- Always use HTTPS in production
+- Enable proxy header trust for accurate IP logging
+- Set up monitoring and alerting for failed authentication attempts
+- Use environment-specific keys (API_KEYS_PRODUCTION)
+- Enable automatic key rotation
+
+**Client Implementation:**
+```python
+# Python example
+import requests
+
+headers = {
+    'Authorization': 'Bearer your-api-key-here',
+    'Content-Type': 'application/json'
+}
+
+response = requests.get('http://localhost:5000/api/trackers', headers=headers)
+```
+
+```javascript
+// JavaScript example
+const headers = {
+    'Authorization': 'Bearer your-api-key-here',
+    'Content-Type': 'application/json'
+};
+
+fetch('http://localhost:5000/api/trackers', { headers })
+    .then(response => response.json())
+    .then(data => console.log(data));
+```
+
+```bash
+# cURL example
+curl -H "Authorization: Bearer your-api-key-here" \
+     -H "Content-Type: application/json" \
+     http://localhost:5000/api/trackers
+```
+
+#### Authentication Errors
+
+**Common Error Responses:**
+
+**Missing API Key (401):**
+```json
+{
+    "error": "Unauthorized",
+    "message": "API key required",
+    "status_code": 401
+}
+```
+
+**Invalid API Key (401):**
+```json
+{
+    "error": "Unauthorized", 
+    "message": "Invalid API key",
+    "status_code": 401
+}
+```
+
+**Malformed Header (401):**
+```json
+{
+    "error": "Unauthorized",
+    "message": "Invalid authorization header format",
+    "status_code": 401
+}
+```
+
+#### Troubleshooting Authentication
+
+**Authentication Not Working:**
+1. Verify API_KEYS environment variable is set
+2. Check that keys meet minimum requirements (16+ characters)
+3. Ensure Authorization header format: `Bearer your-key`
+4. Check application logs for security system initialization
+5. Test with a simple endpoint first
+
+**Key Generation Issues:**
+```bash
+# Verify the key generator works
+python scripts/generate-api-key.py --test
+
+# Generate and test a key immediately
+KEY=$(python scripts/generate-api-key.py)
+curl -H "Authorization: Bearer $KEY" http://localhost:5000/health
+```
+
+**Environment-Specific Keys:**
+```bash
+# Check which environment is detected
+curl http://localhost:5000/health/detailed
+
+# Verify correct keys are loaded for your environment
+# Check application startup logs for key count
+```
+
 ### Health Check Endpoints
 
 The application provides comprehensive health check endpoints for monitoring and deployment:
@@ -171,18 +419,24 @@ Once the Flask app is running, you can access:
 - **Liveness Check**: `GET /health/live` - Kubernetes liveness probe endpoint
 
 **Application Endpoints:**
-- **Health check**: `GET /hello` - Simple health check endpoint (legacy)
+- **Health check**: `GET /hello` - Simple health check endpoint (legacy, public)
 
-**Trackers API:**
+**Trackers API (requires API key):**
 - `GET /trackers` - List all trackers
 - `POST /add_tracker` - Create a new tracker
 
-**Tracker Values API:**
+**Tracker Values API (requires API key):**
 - `POST /api/trackers/{id}/values` - Create/update tracker values
 - `GET /api/trackers/{id}/values` - List tracker values
 - `GET /api/trackers/{id}/values/{date}` - Get specific value
 - `PUT /api/trackers/{id}/values/{date}` - Update specific value
 - `DELETE /api/trackers/{id}/values/{date}` - Delete specific value
+
+**Authentication:**
+All API endpoints (except health checks) require a valid API key in the Authorization header:
+```bash
+Authorization: Bearer your-api-key-here
+```
 
 ### Running Tests
 
@@ -246,23 +500,31 @@ trackers/
 │   │   ├── health_routes.py      # Health check endpoints
 │   │   ├── tracker_routes.py     # Tracker API endpoints
 │   │   └── tracker_value_routes.py # Tracker values API endpoints
+│   ├── security/
+│   │   └── api_key_auth.py       # API key authentication system
 │   └── validation/
 │       └── tracker_value_validation.py # Input validation
 ├── tests/
 │   ├── conftest.py               # Test fixtures and database setup
+│   ├── test_api_key_security.py  # API key authentication tests
 │   ├── test_db.py                # Database tests
 │   ├── test_endpoints.py         # API endpoint tests
 │   ├── test_health_endpoints.py  # Health check endpoint tests
+│   ├── test_production_security.py # Production security tests
 │   ├── test_settings.py          # Configuration tests (property-based)
 │   ├── test_trackerdb.py         # Repository tests
 │   ├── test_error_handling.py    # Error handling tests
 │   └── test_tracker_value_integration.py # Integration tests
 ├── scripts/
+│   ├── generate-api-key.py       # API key generation utility
 │   ├── init-db.sh                # Database initialization script
 │   ├── init-db.py                # Python database setup
 │   ├── init-db.sql               # Manual SQL setup
 │   ├── test-db.sh                # Test database management
 │   └── migrate-tracker-values.py # Database migration script
+├── docs/
+│   ├── migration-system.md       # Database migration documentation
+│   └── production-security.md    # Production security guide
 ├── main.py                       # Main Flask application entry point
 ├── run.py                        # Alternative Flask runner with more config
 └── docker-compose.test.yml       # Test database configuration
@@ -290,6 +552,19 @@ Required environment variables for database connection:
 - `FLASK_HOST` - Flask server host (default: 0.0.0.0)
 - `FLASK_PORT` - Flask server port (default: 5000)
 - `FLASK_DEBUG` - Flask debug mode (default: true)
+- `FLASK_ENV` - Flask environment (development, staging, production)
+
+**API Key Authentication:**
+- `API_KEYS` - Comma-separated list of valid API keys
+- `API_KEYS_DEVELOPMENT` - Development environment API keys
+- `API_KEYS_STAGING` - Staging environment API keys  
+- `API_KEYS_PRODUCTION` - Production environment API keys
+- `ENABLE_API_KEY_ROTATION` - Enable automatic key rotation (default: true)
+- `API_KEY_RELOAD_INTERVAL` - Key reload interval in seconds (default: 300)
+- `TRUST_PROXY_HEADERS` - Trust proxy headers for IP extraction (default: false)
+- `REQUIRE_HTTPS` - Require HTTPS connections (auto-enabled in production)
+- `PROTECTED_ROUTES` - Custom protected route patterns (comma-separated)
+- `PUBLIC_ROUTES` - Custom public route patterns (comma-separated)
 
 **Legacy (for initialization scripts):**
 - `POSTGRES_USER` - PostgreSQL superuser for initialization (default: postgres)
@@ -305,7 +580,29 @@ The application is configured for deployment on Clever Cloud with proper WSGI su
 
 The `wsgi.py` file provides the production WSGI application object that Clever Cloud (and other WSGI servers) can use. It automatically loads environment variables and creates the Flask application instance.
 
-**Environment Variables:** Clever Cloud automatically sets the PostgreSQL addon environment variables (`POSTGRESQL_ADDON_*`) when you add a PostgreSQL addon to your application.
+**Environment Variables:** 
+- Clever Cloud automatically sets the PostgreSQL addon environment variables (`POSTGRESQL_ADDON_*`) when you add a PostgreSQL addon to your application.
+- **API Key Configuration:** Set `API_KEYS_PRODUCTION` in Clever Cloud environment variables for secure API authentication.
+
+**Production Security Setup:**
+1. **Add PostgreSQL Addon** in Clever Cloud console
+2. **Set API Keys** in environment variables:
+   ```bash
+   API_KEYS_PRODUCTION=your-secure-production-key-1,your-secure-production-key-2
+   ```
+3. **Optional Security Settings:**
+   ```bash
+   REQUIRE_HTTPS=true
+   TRUST_PROXY_HEADERS=true
+   ENABLE_API_KEY_ROTATION=true
+   ```
+
+**Production Features:**
+- Automatic HTTPS requirement enforcement
+- Proxy header trust for accurate IP logging  
+- Enhanced security metrics logging
+- Automatic key rotation support
+- Production readiness validation
 
 ### Local Development
 

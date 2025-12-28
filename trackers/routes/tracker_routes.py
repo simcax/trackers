@@ -5,11 +5,13 @@ from sqlalchemy.exc import IntegrityError
 
 from trackers.db import database as db_module
 from trackers.db.trackerdb import create_tracker, get_all_trackers
+from trackers.security.api_key_auth import api_key_required
 
 tracker_bp = Blueprint("tracker", __name__)
 
 
 @tracker_bp.route("/add_tracker", methods=["POST"])
+@api_key_required
 def add_tracker():
     """
     Create a new tracker in the database.
@@ -54,6 +56,7 @@ def add_tracker():
 
 
 @tracker_bp.route("/trackers", methods=["GET"])
+@api_key_required
 def get_trackers():
     """
     Retrieve all trackers from the database.

@@ -27,6 +27,7 @@ from trackers.error_handling import (
     log_error,
     not_found_if_none,
 )
+from trackers.security.api_key_auth import api_key_required
 from trackers.validation.tracker_value_validation import (
     sanitize_value_input,
     validate_tracker_exists,
@@ -38,6 +39,7 @@ tracker_value_bp = Blueprint("tracker_value", __name__)
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values", methods=["POST"])
+@api_key_required
 def create_tracker_value(tracker_id):
     """
     Create or update a tracker value for a specific date.
@@ -136,6 +138,7 @@ def create_tracker_value(tracker_id):
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values/<date>", methods=["GET"])
+@api_key_required
 def get_tracker_value(tracker_id, date):
     """
     Get a specific tracker value by tracker ID and date.
@@ -201,6 +204,7 @@ def get_tracker_value(tracker_id, date):
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values", methods=["GET"])
+@api_key_required
 def get_tracker_values_list(tracker_id):
     """
     Get all values for a tracker, optionally filtered by date range.
@@ -272,6 +276,7 @@ def get_tracker_values_list(tracker_id):
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values/<date>", methods=["PUT"])
+@api_key_required
 def update_tracker_value(tracker_id, date):
     """
     Update an existing tracker value.
@@ -363,6 +368,7 @@ def update_tracker_value(tracker_id, date):
 @tracker_value_bp.route(
     "/api/trackers/<int:tracker_id>/values/<date>", methods=["DELETE"]
 )
+@api_key_required
 def delete_tracker_value(tracker_id, date):
     """
     Delete a specific tracker value.
@@ -422,6 +428,7 @@ def delete_tracker_value(tracker_id, date):
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values", methods=["DELETE"])
+@api_key_required
 def delete_all_tracker_values_endpoint(tracker_id):
     """
     Delete all values for a specific tracker.
