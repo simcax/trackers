@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+Simple script to run the Flask application.
+Usage: uv run python run.py
+"""
+
 import os
 
 from dotenv import load_dotenv
@@ -9,7 +15,7 @@ from trackers import create_app
 
 
 def main():
-    """Main entry point for the Flask application."""
+    """Run the Flask development server."""
     app = create_app()
 
     # Get configuration from environment variables
@@ -19,7 +25,6 @@ def main():
 
     print(f"Starting Flask app on {host}:{port} (debug={debug})")
 
-    # Run the Flask development server
     app.run(host=host, port=port, debug=debug)
 
 

@@ -8,8 +8,19 @@ dependencies = [
     "dotenv>=0.9.9",
     "flask>=3.1.2",
     "psycopg2-binary>=2.9.10",
+    "python-dotenv>=1.2.1",
     "sqlalchemy>=2.0.44",
 ]
+
+[project.scripts]
+trackers-app = "main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
 
 [dependency-groups]
 dev = [

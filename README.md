@@ -75,6 +75,66 @@ Base.metadata.create_all(engine)
 "
 ```
 
+### Running the Flask Application
+
+The Flask application can be started in several ways:
+
+#### Option 1: Using uv run with script entry point (Recommended)
+
+```bash
+# Start the Flask app (default: http://0.0.0.0:5000)
+uv run trackers-app
+
+# With custom port
+FLASK_PORT=8000 uv run trackers-app
+
+# With custom host and port
+FLASK_HOST=127.0.0.1 FLASK_PORT=8000 uv run trackers-app
+```
+
+#### Option 2: Using uv run with Python files
+
+```bash
+# Using main.py
+uv run python main.py
+
+# Using run.py (with more configuration options)
+uv run python run.py
+```
+
+#### Option 3: Direct Python execution
+
+```bash
+# Make sure environment is activated and dependencies installed
+python main.py
+```
+
+### Flask Configuration
+
+You can configure the Flask application using environment variables in your `.env` file:
+
+```bash
+# Flask server configuration
+FLASK_HOST=0.0.0.0      # Server host (default: 0.0.0.0)
+FLASK_PORT=5000         # Server port (default: 5000)
+FLASK_DEBUG=true        # Debug mode (default: true)
+```
+
+### API Endpoints
+
+Once the Flask app is running, you can access:
+
+- **Health check**: `GET /hello` - Simple health check endpoint
+- **Trackers API**: 
+  - `GET /trackers` - List all trackers
+  - `POST /add_tracker` - Create a new tracker
+- **Tracker Values API**:
+  - `POST /api/trackers/{id}/values` - Create/update tracker values
+  - `GET /api/trackers/{id}/values` - List tracker values
+  - `GET /api/trackers/{id}/values/{date}` - Get specific value
+  - `PUT /api/trackers/{id}/values/{date}` - Update specific value
+  - `DELETE /api/trackers/{id}/values/{date}` - Delete specific value
+
 ### Running Tests
 
 The project uses automated test database setup with PostgreSQL.
@@ -126,47 +186,70 @@ The project includes several database management scripts:
 trackers/
 ├── trackers/
 │   ├── db/
-│   │   ├── database.py      # Database engine and session setup
-│   │   ├── settings.py      # Configuration management
-│   │   └── trackerdb.py     # Repository operations (CRUD)
+│   │   ├── database.py           # Database engine and session setup
+│   │   ├── settings.py           # Configuration management
+│   │   ├── trackerdb.py          # Repository operations (CRUD)
+│   │   └── tracker_values_db.py  # Tracker values repository
 │   ├── models/
-│   │   └── tracker_model.py # SQLAlchemy models
-│   └── routes/
-│       └── tracker_routes.py # API endpoints
+│   │   ├── tracker_model.py      # SQLAlchemy models
+│   │   └── tracker_value_model.py # Tracker values model
+│   ├── routes/
+│   │   ├── tracker_routes.py     # Tracker API endpoints
+│   │   └── tracker_value_routes.py # Tracker values API endpoints
+│   └── validation/
+│       └── tracker_value_validation.py # Input validation
 ├── tests/
-│   ├── conftest.py          # Test fixtures and database setup
-│   ├── test_db.py           # Database tests
-│   ├── test_trackerdb.py    # Repository tests
-│   ├── test_endpoints.py    # API endpoint tests
-│   ├── test_settings.py     # Configuration tests (property-based)
-│   └── test_error_handling.py # Error handling tests
+│   ├── conftest.py               # Test fixtures and database setup
+│   ├── test_db.py                # Database tests
+│   ├── test_trackerdb.py         # Repository tests
+│   ├── test_endpoints.py         # API endpoint tests
+│   ├── test_settings.py          # Configuration tests (property-based)
+│   ├── test_error_handling.py    # Error handling tests
+│   └── test_tracker_value_integration.py # Integration tests
 ├── scripts/
-│   ├── init-db.sh           # Database initialization script
-│   ├── init-db.py           # Python database setup
-│   ├── init-db.sql          # Manual SQL setup
-│   └── test-db.sh           # Test database management
-└── docker-compose.test.yml  # Test database configuration
+│   ├── init-db.sh                # Database initialization script
+│   ├── init-db.py                # Python database setup
+│   ├── init-db.sql               # Manual SQL setup
+│   ├── test-db.sh                # Test database management
+│   └── migrate-tracker-values.py # Database migration script
+├── main.py                       # Main Flask application entry point
+├── run.py                        # Alternative Flask runner with more config
+└── docker-compose.test.yml       # Test database configuration
 ```
 
 ## Environment Variables
 
-Required environment variables:
+Required environment variables for database connection:
 
+**Clever Cloud PostgreSQL Addon (Production):**
+- `POSTGRESQL_ADDON_HOST` - PostgreSQL server host (automatically set by Clever Cloud)
+- `POSTGRESQL_ADDON_USER` - Database username (automatically set by Clever Cloud)
+- `POSTGRESQL_ADDON_PASSWORD` - Database password (automatically set by Clever Cloud)
+- `POSTGRESQL_ADDON_DB` - Database name (automatically set by Clever Cloud)
+- `POSTGRESQL_ADDON_PORT` - Database port (automatically set by Clever Cloud)
+
+**Local Development (Fallback):**
 - `DB_HOST` - PostgreSQL server host (default: localhost)
 - `DB_USER` - Database username
 - `DB_PASSWORD` - Database password
 - `DB_NAME` - Database name (test database will append `_test`)
+- `DB_PORT` - Database port (optional, defaults to 5432)
 
-Optional environment variables:
+**Flask Application:**
+- `FLASK_HOST` - Flask server host (default: 0.0.0.0)
+- `FLASK_PORT` - Flask server port (default: 5000)
+- `FLASK_DEBUG` - Flask debug mode (default: true)
 
+**Legacy (for initialization scripts):**
 - `POSTGRES_USER` - PostgreSQL superuser for initialization (default: postgres)
 - `POSTGRES_PASSWORD` - PostgreSQL superuser password (default: postgres)
 
 ## Database Schema
 
-The application uses three main tables:
+The application uses these main tables:
 
 - **trackers** - Main tracker entities with name and description
+- **tracker_values** - Daily values associated with trackers
 - **items** - Items associated with trackers, with timestamps
 - **logs** - Log entries for tracking events and changes
 
