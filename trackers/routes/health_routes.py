@@ -2,7 +2,7 @@
 Health check routes for monitoring application status.
 
 Provides endpoints for checking application health, database connectivity,
-and overall system status for monitoring and deployment purposes.
+migration status, and overall system status for monitoring and deployment purposes.
 """
 
 import logging
@@ -187,3 +187,98 @@ def liveness_check():
             "service": "trackers-api",
         }
     ), 200
+
+
+@health_bp.route("/health/migration", methods=["GET"])
+def migration_status():
+    """
+    Migration status endpoint for monitoring and debugging.
+
+    Provides comprehensive information about database migration status,
+    configuration, and health for deployment monitoring and troubleshooting.
+
+    Returns:
+        JSON response with detailed migration status information
+    """
+    try:
+        # Import required components
+        from trackers.db.database import Base, engine
+        from trackers.db.migration_utils import get_migration_status_report
+
+        # Get comprehensive migration status report
+        report = get_migration_status_report(engine, Base.metadata, logger)
+
+        # Add timestamp and service info
+        report["timestamp"] = datetime.now(timezone.utc).isoformat()
+        report["service"] = "trackers-api"
+
+        # Determine HTTP status code based on health
+        health = report.get("health", "error")
+        if health == "healthy":
+            status_code = 200
+        elif health == "needs_migration":
+            status_code = 200  # Migration needed is not an error, just informational
+        else:
+            status_code = 503  # Unhealthy or error
+
+        return jsonify(report), status_code
+
+    except Exception as e:
+        logger.error(f"Migration status endpoint failed: {e}")
+        error_response = {
+            "error": str(e),
+            "health": "error",
+            "health_message": f"Failed to get migration status: {e}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "trackers-api",
+        }
+        return jsonify(error_response), 503
+
+
+@health_bp.route("/health/migration/trigger", methods=["POST"])
+def trigger_migration():
+    """
+    Manual migration trigger endpoint for maintenance and debugging.
+
+    Allows manual triggering of database migration outside of automatic startup.
+    Useful for maintenance operations, debugging, or custom deployment scenarios.
+
+    Returns:
+        JSON response with migration execution results
+    """
+    try:
+        # Import required components
+        from trackers.db.database import Base, engine
+        from trackers.db.migration_utils import trigger_manual_migration
+
+        logger.info("Manual migration triggered via API endpoint")
+
+        # Trigger manual migration
+        result = trigger_manual_migration(engine, Base.metadata, logger=logger)
+
+        # Build response
+        response = {
+            "success": result.success,
+            "message": result.message,
+            "tables_created": result.tables_created,
+            "errors": result.errors,
+            "duration_seconds": result.duration_seconds,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "trackers-api",
+        }
+
+        # Determine HTTP status code
+        status_code = 200 if result.success else 500
+
+        return jsonify(response), status_code
+
+    except Exception as e:
+        logger.error(f"Manual migration trigger failed: {e}")
+        error_response = {
+            "success": False,
+            "error": str(e),
+            "message": f"Failed to trigger migration: {e}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "trackers-api",
+        }
+        return jsonify(error_response), 500
