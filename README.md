@@ -120,20 +120,69 @@ FLASK_PORT=5000         # Server port (default: 5000)
 FLASK_DEBUG=true        # Debug mode (default: true)
 ```
 
-### API Endpoints
+### Health Check Endpoints
+
+The application provides comprehensive health check endpoints for monitoring and deployment:
+
+#### Basic Health Check
+```bash
+curl http://localhost:5000/health
+```
+Returns basic application status - lightweight check suitable for load balancers.
+
+#### Detailed Health Check
+```bash
+curl http://localhost:5000/health/detailed
+```
+Performs comprehensive checks including database connectivity. Returns HTTP 503 if any component is unhealthy.
+
+#### Kubernetes Probes
+```bash
+# Readiness probe - checks if app is ready to serve traffic
+curl http://localhost:5000/health/ready
+
+# Liveness probe - checks if app is alive and shouldn't be restarted
+curl http://localhost:5000/health/live
+```
+
+**Example Kubernetes Configuration:**
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: 5000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 5000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+```
 
 Once the Flask app is running, you can access:
 
-- **Health check**: `GET /hello` - Simple health check endpoint
-- **Trackers API**: 
-  - `GET /trackers` - List all trackers
-  - `POST /add_tracker` - Create a new tracker
-- **Tracker Values API**:
-  - `POST /api/trackers/{id}/values` - Create/update tracker values
-  - `GET /api/trackers/{id}/values` - List tracker values
-  - `GET /api/trackers/{id}/values/{date}` - Get specific value
-  - `PUT /api/trackers/{id}/values/{date}` - Update specific value
-  - `DELETE /api/trackers/{id}/values/{date}` - Delete specific value
+**Health Check Endpoints:**
+- **Basic Health**: `GET /health` - Simple health status check
+- **Detailed Health**: `GET /health/detailed` - Comprehensive health check with database connectivity
+- **Readiness Check**: `GET /health/ready` - Kubernetes readiness probe endpoint
+- **Liveness Check**: `GET /health/live` - Kubernetes liveness probe endpoint
+
+**Application Endpoints:**
+- **Health check**: `GET /hello` - Simple health check endpoint (legacy)
+
+**Trackers API:**
+- `GET /trackers` - List all trackers
+- `POST /add_tracker` - Create a new tracker
+
+**Tracker Values API:**
+- `POST /api/trackers/{id}/values` - Create/update tracker values
+- `GET /api/trackers/{id}/values` - List tracker values
+- `GET /api/trackers/{id}/values/{date}` - Get specific value
+- `PUT /api/trackers/{id}/values/{date}` - Update specific value
+- `DELETE /api/trackers/{id}/values/{date}` - Delete specific value
 
 ### Running Tests
 
@@ -194,6 +243,7 @@ trackers/
 │   │   ├── tracker_model.py      # SQLAlchemy models
 │   │   └── tracker_value_model.py # Tracker values model
 │   ├── routes/
+│   │   ├── health_routes.py      # Health check endpoints
 │   │   ├── tracker_routes.py     # Tracker API endpoints
 │   │   └── tracker_value_routes.py # Tracker values API endpoints
 │   └── validation/
@@ -201,9 +251,10 @@ trackers/
 ├── tests/
 │   ├── conftest.py               # Test fixtures and database setup
 │   ├── test_db.py                # Database tests
-│   ├── test_trackerdb.py         # Repository tests
 │   ├── test_endpoints.py         # API endpoint tests
+│   ├── test_health_endpoints.py  # Health check endpoint tests
 │   ├── test_settings.py          # Configuration tests (property-based)
+│   ├── test_trackerdb.py         # Repository tests
 │   ├── test_error_handling.py    # Error handling tests
 │   └── test_tracker_value_integration.py # Integration tests
 ├── scripts/

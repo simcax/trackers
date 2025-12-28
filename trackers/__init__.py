@@ -3,6 +3,7 @@ import os
 from flask import Flask
 
 from trackers.error_handling import register_error_handlers
+from trackers.routes.health_routes import health_bp
 from trackers.routes.tracker_routes import tracker_bp
 from trackers.routes.tracker_value_routes import tracker_value_bp
 
@@ -30,6 +31,9 @@ def create_app(test_config=None):
 
     # register error handlers
     register_error_handlers(app)
+
+    # register health check blueprint
+    app.register_blueprint(health_bp)
 
     # register tracker blueprint
     app.register_blueprint(tracker_bp)
