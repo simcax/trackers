@@ -295,6 +295,35 @@ Required environment variables for database connection:
 - `POSTGRES_USER` - PostgreSQL superuser for initialization (default: postgres)
 - `POSTGRES_PASSWORD` - PostgreSQL superuser password (default: postgres)
 
+## Deployment
+
+### Production Deployment (Clever Cloud)
+
+The application is configured for deployment on Clever Cloud with proper WSGI support:
+
+**WSGI Entry Point:** `wsgi:application`
+
+The `wsgi.py` file provides the production WSGI application object that Clever Cloud (and other WSGI servers) can use. It automatically loads environment variables and creates the Flask application instance.
+
+**Environment Variables:** Clever Cloud automatically sets the PostgreSQL addon environment variables (`POSTGRESQL_ADDON_*`) when you add a PostgreSQL addon to your application.
+
+### Local Development
+
+For local development, you can run the application using:
+
+```bash
+# Using uv (recommended)
+uv run trackers-app
+
+# Or directly with Python
+python main.py
+
+# Or using the run script
+python run.py
+```
+
+The `main.py` file provides a development server with hot reloading and debug mode enabled by default.
+
 ## Database Schema
 
 The application uses these main tables:
