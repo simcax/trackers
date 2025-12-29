@@ -1,0 +1,269 @@
+@import "tailwindcss";
+@import "flowbite/dist/flowbite.min.css";
+
+/* TailwindCSS v4 theme configuration */
+@theme {
+  --color-gray-750: #2d3748;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  
+  --breakpoint-xs: 320px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+  
+  --spacing-18: 4.5rem;
+  --spacing-88: 22rem;
+  --spacing-128: 32rem;
+  
+  --min-height-touch: 44px;
+  --min-width-touch: 44px;
+}
+
+/* Custom styles for the tracker web UI */
+@layer components {
+  .tracker-card {
+    @apply bg-gray-800 rounded-xl p-4 space-y-3 hover:bg-gray-700 transition-colors duration-200;
+  }
+  
+  .tracker-icon {
+    @apply w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold;
+  }
+  
+  .value-badge {
+    @apply bg-gray-700 px-2 py-1 rounded text-sm hover:bg-gray-600 transition-colors duration-150;
+  }
+  
+  .form-input {
+    @apply w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  }
+  
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .color-option {
+    @apply w-8 h-8 rounded-full border-2 border-transparent hover:border-white transition-all duration-200 cursor-pointer;
+  }
+  
+  .color-option.selected {
+    @apply border-white ring-2 ring-white ring-offset-2 ring-offset-gray-800;
+  }
+  
+  /* Touch target utilities */
+  .min-h-touch {
+    min-height: var(--min-height-touch);
+  }
+  
+  .min-w-touch {
+    min-width: var(--min-width-touch);
+  }
+  
+  /* Responsive grid utilities */
+  .grid-responsive {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6;
+  }
+  
+  /* Mobile-first responsive text */
+  .text-responsive-sm {
+    @apply text-xs sm:text-sm;
+  }
+  
+  .text-responsive-base {
+    @apply text-sm sm:text-base;
+  }
+  
+  .text-responsive-lg {
+    @apply text-base sm:text-lg;
+  }
+  
+  .text-responsive-xl {
+    @apply text-lg sm:text-xl;
+  }
+  
+  .text-responsive-2xl {
+    @apply text-xl sm:text-2xl;
+  }
+  
+  .text-responsive-3xl {
+    @apply text-2xl sm:text-3xl;
+  }
+  
+  /* Responsive spacing utilities */
+  .space-responsive-x {
+    @apply space-x-2 sm:space-x-3 md:space-x-4;
+  }
+  
+  .space-responsive-y {
+    @apply space-y-3 sm:space-y-4 md:space-y-5;
+  }
+  
+  .p-responsive {
+    @apply p-4 sm:p-6;
+  }
+  
+  .px-responsive {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+  
+  .py-responsive {
+    @apply py-4 sm:py-6;
+  }
+  
+  /* Responsive flex utilities */
+  .flex-responsive {
+    @apply flex flex-col sm:flex-row;
+  }
+  
+  .items-responsive {
+    @apply items-start sm:items-center;
+  }
+  
+  .justify-responsive {
+    @apply justify-start sm:justify-between;
+  }
+}
+
+/* Dark theme base styles */
+body {
+  @apply bg-gray-900 text-white;
+}
+
+/* Custom responsive breakpoint utilities */
+@layer utilities {
+  /* Mobile-first responsive display utilities */
+  .block-mobile {
+    @apply block sm:hidden;
+  }
+  
+  .hidden-mobile {
+    @apply hidden sm:block;
+  }
+  
+  .flex-mobile {
+    @apply flex sm:hidden;
+  }
+  
+  .hidden-desktop {
+    @apply block sm:hidden;
+  }
+  
+  .block-desktop {
+    @apply hidden sm:block;
+  }
+  
+  /* Responsive width utilities */
+  .w-mobile-full {
+    @apply w-full sm:w-auto;
+  }
+  
+  .w-desktop-auto {
+    @apply w-full sm:w-auto;
+  }
+  
+  /* Touch-friendly interactive elements */
+  .touch-target {
+    min-height: var(--min-height-touch);
+    min-width: var(--min-width-touch);
+  }
+  
+  /* Responsive grid gap utilities */
+  .gap-responsive {
+    @apply gap-4 sm:gap-6;
+  }
+  
+  /* Responsive border radius */
+  .rounded-responsive {
+    @apply rounded-lg sm:rounded-xl;
+  }
+  
+  /* Responsive shadow utilities */
+  .shadow-responsive {
+    @apply shadow-md sm:shadow-lg;
+  }
+  
+  /* Focus states for accessibility */
+  .focus-visible-ring {
+    @apply focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900;
+  }
+}
+
+/* Responsive typography scale */
+@media (max-width: 640px) {
+  .text-responsive-scale {
+    font-size: 0.875rem; /* 14px */
+    line-height: 1.25rem; /* 20px */
+  }
+}
+
+@media (min-width: 641px) {
+  .text-responsive-scale {
+    font-size: 1rem; /* 16px */
+    line-height: 1.5rem; /* 24px */
+  }
+}
+
+/* Smooth transitions for responsive changes */
+* {
+  transition-property: margin, padding, font-size, line-height;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Ensure proper touch targets on mobile */
+@media (max-width: 768px) {
+  button, 
+  [role="button"], 
+  input[type="button"], 
+  input[type="submit"], 
+  input[type="reset"], 
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Increase tap targets for small interactive elements */
+  .value-badge,
+  .color-option,
+  .tracker-icon {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .bg-gray-800 {
+    @apply bg-black border border-gray-600;
+  }
+  
+  .bg-gray-700 {
+    @apply bg-gray-900 border border-gray-500;
+  }
+  
+  .text-gray-400 {
+    @apply text-gray-200;
+  }
+  
+  .text-gray-500 {
+    @apply text-gray-300;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

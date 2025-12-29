@@ -24,7 +24,7 @@ package = true
 
 [dependency-groups]
 dev = [
+    "beautifulsoup4>=4.14.3",
     "hypothesis>=6.148.2",
     "pytest>=9.0.0",
-    "python-dotenv>=1.2.1",
 ]

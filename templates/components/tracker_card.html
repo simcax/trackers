@@ -1,0 +1,237 @@
+<!-- Tracker Card Component -->
+<article class="bg-gray-800 rounded-xl p-4 sm:p-6 space-y-3 sm:space-y-4 shadow-lg hover:shadow-xl transition-all duration-200 border border-gray-700 hover:border-gray-600"
+         role="article"
+         aria-labelledby="tracker-name-{{ tracker.id }}"
+         aria-describedby="tracker-summary-{{ tracker.id }}">
+    
+    <!-- Screen reader summary -->
+    <div id="tracker-summary-{{ tracker.id }}" class="sr-only">
+        Tracker for {{ tracker.name }}. Current value: {{ tracker.current_value|default('No data') }} {{ tracker.unit|default('') }}.
+        {% if tracker.change is defined and tracker.change != 0 %}
+            {% if tracker.change > 0 %}Increased{% else %}Decreased{% endif %} by {{ tracker.change|abs }} from yesterday.
+        {% endif %}
+        Last 5 values: {% if tracker.recent_values %}{{ tracker.recent_values|join(', ') }}{% else %}No recent data{% endif %}.
+    </div>
+    <!-- Header Section with Icon, Name, and Mini Chart -->
+    <div class="flex items-start sm:items-center justify-between space-x-3">
+        <div class="flex items-start sm:items-center space-x-3 sm:space-x-4 flex-1 min-w-0">
+            <!-- Tracker Icon -->
+            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-{{ tracker.color|default('blue') }}-500 rounded-full flex items-center justify-center text-white text-lg sm:text-xl font-bold shadow-md flex-shrink-0">
+                {% if tracker.icon %}
+                    {{ tracker.icon }}
+                {% else %}
+                    📊
+                {% endif %}
+            </div>
+            
+            <!-- Tracker Info -->
+            <div class="flex-1 min-w-0">
+                <h3 id="tracker-name-{{ tracker.id }}" class="font-semibold text-white text-base sm:text-lg truncate">{{ tracker.name }}</h3>
+                <div class="flex flex-col sm:flex-row sm:items-center sm:space-x-2 mt-1">
+                    <p class="text-xs sm:text-sm text-gray-300">
+                        <span class="sr-only">Current value: </span>
+                        Current: <span class="font-medium text-white">{{ tracker.current_value|default('--') }}</span>
+                        {% if tracker.unit %}
+                            <span class="text-gray-400">{{ tracker.unit }}</span>
+                        {% endif %}
+                    </p>
+                </div>
+                
+                <!-- Change Indicator -->
+                {% if tracker.change is defined and tracker.change != 0 %}
+                <div class="flex items-center space-x-1 mt-1" role="status" aria-label="Change from yesterday">
+                    {% if tracker.change > 0 %}
+                        <svg class="w-3 h-3 sm:w-4 sm:h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17l9.2-9.2M17 17V7H7"></path>
+                        </svg>
+                        <span class="text-xs text-green-400 font-medium">
+                            <span class="sr-only">Increased by </span>+{{ tracker.change }} from yesterday
+                        </span>
+                    {% else %}
+                        <svg class="w-3 h-3 sm:w-4 sm:h-4 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 7l-9.2 9.2M7 7v10h10"></path>
+                        </svg>
+                        <span class="text-xs text-red-400 font-medium">
+                            <span class="sr-only">Decreased by </span>{{ tracker.change }} from yesterday
+                        </span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Mini Trend Visualization -->
+        <div class="w-16 h-10 sm:w-20 sm:h-12 bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0" 
+             data-chart-container 
+             data-tracker-id="{{ tracker.id }}"
+             role="img"
+             aria-labelledby="chart-label-{{ tracker.id }}">
+            <div id="chart-label-{{ tracker.id }}" class="sr-only">
+                Trend chart for {{ tracker.name }}{% if tracker.recent_values %} showing recent values: {{ tracker.recent_values|join(', ') }}{% else %} with no data available{% endif %}
+            </div>
+            <svg class="w-12 h-6 sm:w-16 sm:h-8 text-{{ tracker.color|default('blue') }}-400" viewBox="0 0 64 32" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Trend chart for {{ tracker.name }}">
+                <title>Trend chart for {{ tracker.name }}</title>
+                <desc>Mini trend visualization showing recent values{% if tracker.recent_values %}: {{ tracker.recent_values|join(', ') }}{% endif %}</desc>
+                
+                {% if tracker.trend_data and tracker.trend_data|length > 0 %}
+                    <!-- Use actual trend data -->
+                    {% set data_length = tracker.trend_data|length %}
+                    {% set x_divisor = (data_length - 1) if data_length > 1 else 1 %}
+                    <polyline 
+                        points="{% for point in tracker.trend_data %}{{ loop.index0 * (64 / x_divisor) }},{{ 32 - (point * 24) }}{% if not loop.last %} {% endif %}{% endfor %}"
+                        stroke="currentColor" 
+                        stroke-width="2" 
+                        fill="none"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    />
+                    
+                    <!-- Data points for better visibility -->
+                    {% if tracker.trend_data|length > 1 %}
+                        {% for point in tracker.trend_data %}
+                            <circle 
+                                cx="{{ loop.index0 * (64 / x_divisor) }}" 
+                                cy="{{ 32 - (point * 24) }}" 
+                                r="1.5" 
+                                fill="currentColor" 
+                                opacity="0.8"
+                            />
+                        {% endfor %}
+                    {% endif %}
+                {% elif tracker.recent_values and tracker.recent_values|length > 0 %}
+                    <!-- Generate trend from recent values -->
+                    {% set values = [] %}
+                    {% for value in tracker.recent_values %}
+                        {% if value|float != value|float %}
+                            {% set _ = values.append(0) %}
+                        {% else %}
+                            {% set _ = values.append(value|float) %}
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if values|length > 0 %}
+                        {% set min_val = values|min %}
+                        {% set max_val = values|max %}
+                        {% set range_val = max_val - min_val %}
+                        {% if range_val == 0 %}{% set range_val = 1 %}{% endif %}
+                        {% set values_length = values|length %}
+                        {% set x_divisor = (values_length - 1) if values_length > 1 else 1 %}
+                        
+                        <polyline 
+                            points="{% for value in values %}{{ loop.index0 * (64 / x_divisor) }},{{ 32 - ((value - min_val) / range_val * 24) }}{% if not loop.last %} {% endif %}{% endfor %}"
+                            stroke="currentColor" 
+                            stroke-width="2" 
+                            fill="none"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        />
+                        
+                        <!-- Data points -->
+                        {% if values|length > 1 %}
+                            {% for value in values %}
+                                <circle 
+                                    cx="{{ loop.index0 * (64 / x_divisor) }}" 
+                                    cy="{{ 32 - ((value - min_val) / range_val * 24) }}" 
+                                    r="1.5" 
+                                    fill="currentColor" 
+                                    opacity="0.8"
+                                />
+                            {% endfor %}
+                        {% endif %}
+                    {% endif %}
+                {% else %}
+                    <!-- Default placeholder trend line -->
+                    <polyline 
+                        points="2,24 14,20 26,16 38,18 50,12 62,8"
+                        stroke="currentColor" 
+                        stroke-width="2" 
+                        fill="none"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        opacity="0.4"
+                    />
+                    
+                    <!-- No data indicator -->
+                    <text 
+                        x="32" 
+                        y="18" 
+                        text-anchor="middle" 
+                        font-size="8" 
+                        fill="currentColor" 
+                        opacity="0.5"
+                    >
+                        No data
+                    </text>
+                {% endif %}
+            </svg>
+        </div>
+    </div>
+    
+    <!-- Recent Values Section -->
+    <div class="space-y-2 sm:space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
+            <p class="text-xs sm:text-sm text-gray-400 font-medium">Last 5 Days:</p>
+            <button 
+                class="self-start sm:self-auto text-xs bg-gray-700 hover:bg-gray-600 focus:ring-2 focus:ring-blue-500 px-3 py-2 rounded-full text-gray-300 hover:text-white transition-all duration-200 flex items-center space-x-1 min-touch-target focus-visible"
+                data-action="view-chart"
+                data-tracker-id="{{ tracker.id }}"
+                data-tracker-name="{{ tracker.name }}"
+                aria-label="View detailed chart for {{ tracker.name }}"
+                aria-describedby="chart-help-{{ tracker.id }}"
+            >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                <span>View Chart</span>
+            </button>
+            <div id="chart-help-{{ tracker.id }}" class="sr-only">Opens a detailed chart view showing historical data and trends</div>
+        </div>
+        
+        <!-- Recent Values Display -->
+        <div class="flex flex-wrap items-center gap-2" role="group" aria-labelledby="recent-values-{{ tracker.id }}">
+            <div id="recent-values-{{ tracker.id }}" class="sr-only">Recent values for {{ tracker.name }}</div>
+            {% if tracker.recent_values %}
+                {% for value in tracker.recent_values %}
+                    <button 
+                        class="bg-gray-700 hover:bg-gray-600 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm text-gray-300 hover:text-white transition-colors cursor-pointer min-touch-target focus:ring-2 focus:ring-blue-500 focus-visible"
+                        title="Value from {{ loop.revindex }} days ago{% if tracker.recent_dates and tracker.recent_dates|length > loop.index0 %}: {{ tracker.recent_dates[loop.index0] }}{% endif %}"
+                        data-action="show-value-details"
+                        data-value="{{ value }}"
+                        data-days-ago="{{ loop.revindex }}"
+                        data-date="{{ (tracker.recent_dates[loop.index0] if tracker.recent_dates and tracker.recent_dates|length > loop.index0 else '') }}"
+                        aria-label="Value {{ value }} from {{ loop.revindex }} day{{ 's' if loop.revindex != 1 else '' }} ago{% if tracker.recent_dates and tracker.recent_dates|length > loop.index0 %}, recorded on {{ tracker.recent_dates[loop.index0] }}{% endif %}. Click for details."
+                    >
+                        {{ value }}
+                    </button>
+                {% endfor %}
+                
+                <!-- Arrow indicator and label -->
+                <div class="flex items-center space-x-1 ml-1" aria-hidden="true">
+                    <span class="text-gray-500 text-xs sm:text-sm">→</span>
+                    <span class="text-gray-400 text-xs">oldest</span>
+                </div>
+            {% else %}
+                <!-- No recent values -->
+                <span class="text-gray-500 text-xs sm:text-sm italic" role="status">No recent data available</span>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Action Button -->
+    <div class="pt-2">
+        <button 
+            class="w-full bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm py-3 text-white transition-all duration-200 flex items-center justify-center space-x-2 shadow-md hover:shadow-lg min-touch-target focus-visible"
+            data-action="add-value"
+            data-tracker-id="{{ tracker.id }}"
+            data-tracker-name="{{ tracker.name }}"
+            aria-label="Add today's value for {{ tracker.name }}"
+            aria-describedby="add-value-help-{{ tracker.id }}"
+        >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+            <span>Add Today's Value</span>
+        </button>
+        <div id="add-value-help-{{ tracker.id }}" class="sr-only">Opens a dialog to enter a new value for today</div>
+    </div>
+</article>

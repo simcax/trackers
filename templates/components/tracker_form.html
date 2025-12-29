@@ -1,0 +1,205 @@
+<!-- Tracker Form Component -->
+<form id="tracker-form" class="space-y-4 sm:space-y-5" novalidate aria-describedby="form-instructions">
+    <div id="form-instructions" class="sr-only">
+        Fill out all required fields marked with an asterisk to create your new tracker. Use Tab to navigate between fields and Enter to submit.
+    </div>
+    
+    <!-- Name Field -->
+    <div>
+        <label for="tracker-name" class="block text-sm font-medium text-gray-300 mb-2">
+            Name <span class="text-red-400" aria-label="required">*</span>
+        </label>
+        <input 
+            type="text" 
+            id="tracker-name"
+            name="name" 
+            placeholder="e.g., Water Intake, Daily Steps, Weight"
+            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 sm:px-4 py-2 sm:py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm sm:text-base min-touch-target focus-visible"
+            required
+            maxlength="100"
+            aria-describedby="name-help name-error"
+            aria-invalid="false"
+            autocomplete="off"
+        >
+        <p id="name-help" class="text-xs text-gray-500 mt-1">Choose a descriptive name for your tracker (required, max 100 characters)</p>
+        <div id="name-error" class="text-red-400 text-xs mt-1 hidden" role="alert" aria-live="polite"></div>
+    </div>
+    
+    <!-- Unit Field -->
+    <div>
+        <label for="tracker-unit" class="block text-sm font-medium text-gray-300 mb-2">
+            Unit <span class="text-red-400" aria-label="required">*</span>
+        </label>
+        <input 
+            type="text" 
+            id="tracker-unit"
+            name="unit" 
+            placeholder="e.g., Liters, Steps, kg, Hours"
+            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 sm:px-4 py-2 sm:py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm sm:text-base min-touch-target focus-visible"
+            required
+            maxlength="20"
+            aria-describedby="unit-help unit-error"
+            aria-invalid="false"
+            autocomplete="off"
+        >
+        <p id="unit-help" class="text-xs text-gray-500 mt-1">What unit will you measure in? (required, max 20 characters)</p>
+        <div id="unit-error" class="text-red-400 text-xs mt-1 hidden" role="alert" aria-live="polite"></div>
+    </div>
+    
+    <!-- Goal Field (Optional) -->
+    <div>
+        <label for="tracker-goal" class="block text-sm font-medium text-gray-300 mb-2">
+            Goal <span class="text-gray-500">(Optional)</span>
+        </label>
+        <input 
+            type="text" 
+            id="tracker-goal"
+            name="goal" 
+            placeholder="e.g., 8 glasses per day, 10000 steps"
+            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 sm:px-4 py-2 sm:py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm sm:text-base min-touch-target focus-visible"
+            maxlength="100"
+            aria-describedby="goal-help"
+            aria-invalid="false"
+            autocomplete="off"
+        >
+        <p id="goal-help" class="text-xs text-gray-500 mt-1">Set a target to work towards (optional, max 100 characters)</p>
+    </div>
+    
+    <!-- Color Theme Selection -->
+    <fieldset>
+        <legend class="block text-sm font-medium text-gray-300 mb-3">
+            Color Theme <span class="text-red-400" aria-label="required">*</span>
+        </legend>
+        <div class="grid grid-cols-2 sm:flex sm:items-center gap-3 sm:gap-4" role="radiogroup" aria-labelledby="color-theme-legend" aria-describedby="color-help">
+            <div class="flex items-center space-x-2">
+                <input 
+                    type="radio" 
+                    id="color-red" 
+                    name="color" 
+                    value="red"
+                    class="sr-only"
+                    required
+                >
+                <label 
+                    for="color-red" 
+                    class="w-10 h-10 sm:w-12 sm:h-12 bg-red-500 rounded-full cursor-pointer border-4 border-transparent hover:border-red-300 focus:border-red-300 transition-all duration-200 flex items-center justify-center color-option min-touch-target focus-visible"
+                    data-color="red"
+                    role="radio"
+                    aria-checked="false"
+                    tabindex="0"
+                    aria-describedby="red-label"
+                >
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 text-white hidden check-icon" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="sr-only">Red color theme</span>
+                </label>
+                <span id="red-label" class="text-xs sm:text-sm text-gray-400">Red</span>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <input 
+                    type="radio" 
+                    id="color-blue" 
+                    name="color" 
+                    value="blue"
+                    class="sr-only"
+                    checked
+                >
+                <label 
+                    for="color-blue" 
+                    class="w-10 h-10 sm:w-12 sm:h-12 bg-blue-500 rounded-full cursor-pointer border-4 border-blue-300 hover:border-blue-300 focus:border-blue-300 transition-all duration-200 flex items-center justify-center color-option min-touch-target focus-visible"
+                    data-color="blue"
+                    role="radio"
+                    aria-checked="true"
+                    tabindex="0"
+                    aria-describedby="blue-label"
+                >
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 text-white check-icon" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="sr-only">Blue color theme</span>
+                </label>
+                <span id="blue-label" class="text-xs sm:text-sm text-gray-400">Blue</span>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <input 
+                    type="radio" 
+                    id="color-green" 
+                    name="color" 
+                    value="green"
+                    class="sr-only"
+                >
+                <label 
+                    for="color-green" 
+                    class="w-10 h-10 sm:w-12 sm:h-12 bg-green-500 rounded-full cursor-pointer border-4 border-transparent hover:border-green-300 focus:border-green-300 transition-all duration-200 flex items-center justify-center color-option min-touch-target focus-visible"
+                    data-color="green"
+                    role="radio"
+                    aria-checked="false"
+                    tabindex="0"
+                    aria-describedby="green-label"
+                >
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 text-white hidden check-icon" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="sr-only">Green color theme</span>
+                </label>
+                <span id="green-label" class="text-xs sm:text-sm text-gray-400">Green</span>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+                <input 
+                    type="radio" 
+                    id="color-teal" 
+                    name="color" 
+                    value="teal"
+                    class="sr-only"
+                >
+                <label 
+                    for="color-teal" 
+                    class="w-10 h-10 sm:w-12 sm:h-12 bg-teal-500 rounded-full cursor-pointer border-4 border-transparent hover:border-teal-300 focus:border-teal-300 transition-all duration-200 flex items-center justify-center color-option min-touch-target focus-visible"
+                    data-color="teal"
+                    role="radio"
+                    aria-checked="false"
+                    tabindex="0"
+                    aria-describedby="teal-label"
+                >
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5 text-white hidden check-icon" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span class="sr-only">Teal color theme</span>
+                </label>
+                <span id="teal-label" class="text-xs sm:text-sm text-gray-400">Teal</span>
+            </div>
+        </div>
+        <p id="color-help" class="text-xs text-gray-500 mt-2">Choose a color theme for your tracker. Use arrow keys to navigate between options.</p>
+        <div id="color-error" class="text-red-400 text-xs mt-2 hidden" role="alert" aria-live="polite"></div>
+    </fieldset>
+    
+    <!-- Form Actions -->
+    <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
+        <button 
+            type="submit" 
+            class="w-full sm:flex-1 bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm py-3 text-white transition-all duration-200 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed min-touch-target focus-visible"
+            id="submit-btn"
+            aria-describedby="submit-help"
+        >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            <span>Save Tracker</span>
+        </button>
+        <div id="submit-help" class="sr-only">Saves the tracker and closes this dialog</div>
+        
+        <button 
+            type="button" 
+            class="w-full sm:flex-1 bg-gray-600 hover:bg-gray-700 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm py-3 text-white transition-all duration-200 min-touch-target focus-visible"
+            onclick="window.hideTrackerForm()"
+            aria-describedby="cancel-help"
+        >
+            Cancel
+        </button>
+        <div id="cancel-help" class="sr-only">Closes this dialog without saving</div>
+    </div>
+</form>
