@@ -292,6 +292,9 @@ class TrackerDashboard {
             if (trackerData.success) {
                 // Show chart modal with data
                 this.showChartModal(trackerName, trackerData.values);
+            } else if (trackerData.authRequired) {
+                // Show user-friendly message for authentication requirement
+                this.showToast('Chart data is not available in this view. The web interface focuses on adding values.', 'info');
             } else {
                 this.showToast('Failed to load chart data', 'error');
             }
@@ -563,16 +566,16 @@ class TrackerDashboard {
     }
     
     /**
-     * Submit tracker value to API
+     * Submit tracker value to web endpoint (not API endpoint)
      * @param {string} trackerId - ID of the tracker
      * @param {string} value - Value to submit
-     * @returns {Promise<Object>} - API response
+     * @returns {Promise<Object>} - Web response
      */
     async submitTrackerValue(trackerId, value) {
         try {
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
             
-            const response = await fetch(`${this.apiBaseUrl}/trackers/${trackerId}/values`, {
+            const response = await fetch(`${this.webBaseUrl}/tracker/${trackerId}/value`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -599,7 +602,7 @@ class TrackerDashboard {
                 };
             }
         } catch (error) {
-            console.error('API request failed:', error);
+            console.error('Web request failed:', error);
             return {
                 success: false,
                 message: 'Network error. Please check your connection.'
@@ -608,7 +611,9 @@ class TrackerDashboard {
     }
     
     /**
-     * Fetch tracker data for charts
+     * Fetch tracker data for charts from API endpoint
+     * Note: This uses API endpoint which requires authentication in production.
+     * If authentication fails, we gracefully handle it by showing a message.
      * @param {string} trackerId - ID of the tracker
      * @returns {Promise<Object>} - Tracker data
      */
@@ -627,6 +632,13 @@ class TrackerDashboard {
                 return {
                     success: true,
                     values: result.values || []
+                };
+            } else if (response.status === 401) {
+                // Authentication required for chart data - this is expected in production
+                return {
+                    success: false,
+                    message: 'Chart data requires API authentication. Please contact administrator.',
+                    authRequired: true
                 };
             } else {
                 return {
