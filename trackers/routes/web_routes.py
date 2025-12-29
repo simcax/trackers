@@ -5,7 +5,7 @@ This module provides Flask routes for the web interface, including:
 - Dashboard view for displaying trackers
 - Tracker creation form handling
 - Adding values to existing trackers
-- Integration with existing API key authentication system
+- Public access without authentication (API routes require authentication)
 
 Validates: Requirements 5.1, 5.2, 5.3, 5.4
 """
@@ -20,7 +20,6 @@ from sqlalchemy.exc import IntegrityError
 from trackers.db import database as db_module
 from trackers.db.tracker_values_db import get_tracker_values
 from trackers.db.trackerdb import create_tracker, get_all_trackers
-from trackers.security.api_key_auth import api_key_required
 
 # Create web blueprint with template and static folder configuration
 web_bp = Blueprint(
@@ -150,7 +149,6 @@ def format_tracker_for_display(
 
 
 @web_bp.route("/")
-@api_key_required
 def dashboard():
     """
     Main dashboard view for the web interface.
@@ -194,7 +192,6 @@ def dashboard():
 
 
 @web_bp.route("/tracker/create", methods=["POST"])
-@api_key_required
 def create_tracker_web():
     """
     Handle tracker creation form submission from the web interface.
@@ -306,7 +303,6 @@ def create_tracker_web():
 
 
 @web_bp.route("/tracker/<int:tracker_id>/value", methods=["POST"])
-@api_key_required
 def add_tracker_value_web(tracker_id):
     """
     Handle adding values to existing trackers from the web interface.
