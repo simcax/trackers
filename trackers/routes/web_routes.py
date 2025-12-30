@@ -49,6 +49,8 @@ class TrackerDisplayData:
     recent_dates: List[str]
     trend_data: List[float]
     unit: Optional[str] = None
+    total_change: float = 0.0
+    total_change_text: str = "No data"
 
 
 def format_danish_number(number):
@@ -120,6 +122,24 @@ def format_tracker_for_display(
             except (ValueError, TypeError):
                 change_text = "No change"
 
+        # Calculate total change (first to most recent entry)
+        total_change = 0.0
+        total_change_text = "No data"
+        if len(recent_values) >= 2:
+            try:
+                # Most recent is first in the list, oldest is last
+                most_recent = float(recent_values[0].value)
+                oldest = float(recent_values[-1].value)
+                total_change = most_recent - oldest
+                if total_change > 0:
+                    total_change_text = f"+{format_danish_number(total_change)} total"
+                elif total_change < 0:
+                    total_change_text = f"{format_danish_number(total_change)} total"
+                else:
+                    total_change_text = "No change total"
+            except (ValueError, TypeError):
+                total_change_text = "No data"
+
         # Generate trend data for mini charts (normalized between 0 and 1)
         trend_data = []
         if recent_values:
@@ -172,6 +192,8 @@ def format_tracker_for_display(
             recent_dates=recent_date_strings,
             trend_data=trend_data,
             unit=unit,
+            total_change=total_change,
+            total_change_text=total_change_text,
         )
     except Exception as e:
         print(f"Error in format_tracker_for_display for tracker {tracker.id}: {e}")
@@ -189,6 +211,8 @@ def format_tracker_for_display(
             recent_dates=[],
             trend_data=[],
             unit=None,
+            total_change=0.0,
+            total_change_text="No data",
         )
 
 

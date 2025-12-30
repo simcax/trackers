@@ -10,6 +10,9 @@
         {% if tracker.change is defined and tracker.change != 0 %}
             {% if tracker.change > 0 %}Increased{% else %}Decreased{% endif %} by {{ tracker.change|abs }} from yesterday.
         {% endif %}
+        {% if tracker.total_change is defined and tracker.total_change_text != "No data" %}
+            {% if tracker.total_change > 0 %}Total increase{% elif tracker.total_change < 0 %}Total decrease{% else %}No total change{% endif %} of {{ tracker.total_change|abs }} from first to most recent entry.
+        {% endif %}
         Last 5 values: {% if tracker.recent_values %}{{ tracker.recent_values|join(', ') }}{% else %}No recent data{% endif %}.
     </div>
     <!-- Header Section with Icon, Name, and Mini Chart -->
@@ -45,14 +48,42 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17l9.2-9.2M17 17V7H7"></path>
                         </svg>
                         <span class="text-xs text-green-400 font-medium">
-                            <span class="sr-only">Increased by </span>+{{ tracker.change }} from yesterday
+                            <span class="sr-only">Increased by </span>+{{ tracker.change }} from last entry
                         </span>
                     {% else %}
                         <svg class="w-3 h-3 sm:w-4 sm:h-4 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 7l-9.2 9.2M7 7v10h10"></path>
                         </svg>
                         <span class="text-xs text-red-400 font-medium">
-                            <span class="sr-only">Decreased by </span>{{ tracker.change }} from yesterday
+                            <span class="sr-only">Decreased by </span>{{ tracker.change }} from last entry
+                        </span>
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                <!-- Total Change Indicator (First to Most Recent) -->
+                {% if tracker.total_change is defined and tracker.total_change_text != "No data" %}
+                <div class="flex items-center space-x-1 mt-1" role="status" aria-label="Total change from first to most recent entry">
+                    {% if tracker.total_change > 0 %}
+                        <svg class="w-3 h-3 sm:w-4 sm:h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                        <span class="text-xs text-blue-400 font-medium">
+                            <span class="sr-only">Total increase of </span>{{ tracker.total_change_text }}
+                        </span>
+                    {% elif tracker.total_change < 0 %}
+                        <svg class="w-3 h-3 sm:w-4 sm:h-4 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path>
+                        </svg>
+                        <span class="text-xs text-orange-400 font-medium">
+                            <span class="sr-only">Total decrease of </span>{{ tracker.total_change_text }}
+                        </span>
+                    {% else %}
+                        <svg class="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14"></path>
+                        </svg>
+                        <span class="text-xs text-gray-400 font-medium">
+                            <span class="sr-only">No total change</span>{{ tracker.total_change_text }}
                         </span>
                     {% endif %}
                 </div>
