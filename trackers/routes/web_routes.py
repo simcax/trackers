@@ -48,6 +48,30 @@ class TrackerDisplayData:
     recent_values: List[str]
     recent_dates: List[str]
     trend_data: List[float]
+    unit: Optional[str] = None
+
+
+def format_danish_number(number):
+    """Format number using Danish conventions (. for thousands, , for decimals)."""
+    try:
+        if isinstance(number, str):
+            number = float(number)
+
+        # Format with Danish locale-like formatting
+        if number == int(number):
+            # Integer - use thousand separators
+            return f"{int(number):,}".replace(",", ".")
+        else:
+            # Decimal - use comma for decimal separator and dot for thousands
+            formatted = (
+                f"{number:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
+            # Remove trailing zeros after decimal comma
+            if "," in formatted:
+                formatted = formatted.rstrip("0").rstrip(",")
+            return formatted
+    except (ValueError, TypeError):
+        return str(number)
 
 
 def format_tracker_for_display(
@@ -68,9 +92,12 @@ def format_tracker_for_display(
             recent_values = []
 
         # Extract recent values for display (last 5)
-        recent_value_strings = [str(value.value) for value in recent_values[:5]]
+        recent_value_strings = [
+            format_danish_number(value.value) for value in recent_values[:5]
+        ]
         recent_date_strings = [
-            value.date.strftime("%Y-%m-%d") for value in recent_values[:5]
+            value.date.strftime("%d-%m-%Y")
+            for value in recent_values[:5]  # Danish date format
         ]
 
         # Calculate current value and change
@@ -79,15 +106,15 @@ def format_tracker_for_display(
         # Simple change calculation (current vs previous)
         change = 0.0
         change_text = "No change"
-        if len(recent_value_strings) >= 2:
+        if len(recent_values) >= 2:
             try:
-                current = float(recent_value_strings[0])
-                previous = float(recent_value_strings[1])
+                current = float(recent_values[0].value)
+                previous = float(recent_values[1].value)
                 change = current - previous
                 if change > 0:
-                    change_text = f"+{change:.1f}"
+                    change_text = f"+{format_danish_number(change)}"
                 elif change < 0:
-                    change_text = f"{change:.1f}"
+                    change_text = format_danish_number(change)
                 else:
                     change_text = "No change"
             except (ValueError, TypeError):
@@ -122,6 +149,16 @@ def format_tracker_for_display(
                     # All values are the same, put them in the middle (0.5)
                     trend_data = [0.5] * len(numeric_values)
 
+        # Extract unit from description if available
+        unit = None
+        if tracker.description:
+            # Look for "Unit: <value>" pattern in description
+            import re
+
+            unit_match = re.search(r"Unit:\s*([^|]+)", tracker.description)
+            if unit_match:
+                unit = unit_match.group(1).strip()
+
         return TrackerDisplayData(
             id=tracker.id,
             name=tracker.name,
@@ -134,6 +171,7 @@ def format_tracker_for_display(
             recent_values=recent_value_strings,
             recent_dates=recent_date_strings,
             trend_data=trend_data,
+            unit=unit,
         )
     except Exception as e:
         print(f"Error in format_tracker_for_display for tracker {tracker.id}: {e}")
@@ -150,6 +188,7 @@ def format_tracker_for_display(
             recent_values=[],
             recent_dates=[],
             trend_data=[],
+            unit=None,
         )
 
 

@@ -170,7 +170,7 @@
     <!-- Recent Values Section -->
     <div class="space-y-2 sm:space-y-3">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
-            <p class="text-xs sm:text-sm text-gray-400 font-medium">Last 5 Days:</p>
+            <p class="text-xs sm:text-sm text-gray-400 font-medium">Last 5 Values:</p>
             <button 
                 class="self-start sm:self-auto text-xs bg-gray-700 hover:bg-gray-600 focus:ring-2 focus:ring-blue-500 px-3 py-2 rounded-full text-gray-300 hover:text-white transition-all duration-200 flex items-center space-x-1 min-touch-target focus-visible"
                 data-action="view-chart"
@@ -201,7 +201,7 @@
                         data-date="{{ (tracker.recent_dates[loop.index0] if tracker.recent_dates and tracker.recent_dates|length > loop.index0 else '') }}"
                         aria-label="Value {{ value }} from {{ loop.revindex }} day{{ 's' if loop.revindex != 1 else '' }} ago{% if tracker.recent_dates and tracker.recent_dates|length > loop.index0 %}, recorded on {{ tracker.recent_dates[loop.index0] }}{% endif %}. Click for details."
                     >
-                        {{ value }}
+                        {{ value }}{% if tracker.unit %}<span class="text-gray-400 ml-1">{{ tracker.unit }}</span>{% endif %}
                     </button>
                 {% endfor %}
                 
@@ -230,7 +230,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
             </svg>
-            <span>Add Today's Value</span>
+            <span>Add Value</span>
         </button>
         <div id="add-value-help-{{ tracker.id }}" class="sr-only">Opens a dialog to enter a new value for today</div>
     </div>

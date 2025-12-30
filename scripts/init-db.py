@@ -36,6 +36,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+
+load_dotenv(project_root / ".env")
+
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy import create_engine, text
@@ -178,6 +183,7 @@ def apply_schema(env_vars):
         try:
             from trackers.db.database import Base
             from trackers.models.tracker_model import ItemModel, LogModel, TrackerModel
+            from trackers.models.user_model import UserModel
         except ImportError as e:
             logger.error("Failed to import trackers module: %s", e)
             logger.error(
@@ -211,21 +217,56 @@ def create_sample_data(engine):
         from sqlalchemy.orm import sessionmaker
 
         from trackers.models.tracker_model import ItemModel, LogModel, TrackerModel
+        from trackers.models.user_model import UserModel
 
         Session = sessionmaker(bind=engine)
         session = Session()
 
-        # Create sample trackers
+        # Create sample users first
+        sample_users = [
+            UserModel(
+                google_user_id="sample-user-1",
+                email="demo@trackers.local",
+                name="Demo User",
+                profile_picture_url=None,
+            ),
+            UserModel(
+                google_user_id="sample-user-2",
+                email="test@trackers.local",
+                name="Test User",
+                profile_picture_url=None,
+            ),
+        ]
+
+        for user in sample_users:
+            session.add(user)
+
+        session.commit()
+
+        # Get the created user IDs
+        demo_user = (
+            session.query(UserModel).filter_by(email="demo@trackers.local").first()
+        )
+        test_user = (
+            session.query(UserModel).filter_by(email="test@trackers.local").first()
+        )
+
+        # Create sample trackers with user associations
         trackers = [
             TrackerModel(
                 name="Fitness Goals",
                 description="Track daily exercise and health metrics",
+                user_id=demo_user.id,
             ),
             TrackerModel(
-                name="Reading List", description="Books to read and reading progress"
+                name="Reading List",
+                description="Books to read and reading progress",
+                user_id=demo_user.id,
             ),
             TrackerModel(
-                name="Project Tasks", description="Development tasks and milestones"
+                name="Project Tasks",
+                description="Development tasks and milestones",
+                user_id=test_user.id,
             ),
         ]
 
@@ -263,7 +304,8 @@ def create_sample_data(engine):
 
         logger.info("✓ Sample data created successfully")
         logger.info(
-            "Created %d trackers, %d items, %d logs",
+            "Created %d users, %d trackers, %d items, %d logs",
+            len(sample_users),
             len(trackers),
             len(items),
             len(logs),
@@ -302,11 +344,55 @@ def verify_setup(env_vars):
             tables = [row[0] for row in result.fetchall()]
             logger.info("✓ Tables verified: %s", ", ".join(tables))
 
+            # Verify user ownership schema elements
+            expected_tables = ["users", "trackers", "items", "logs"]
+            missing_tables = [table for table in expected_tables if table not in tables]
+            if missing_tables:
+                logger.error("✗ Missing required tables: %s", ", ".join(missing_tables))
+                sys.exit(1)
+            logger.info("✓ All required tables present")
+
+            # Verify user_id column exists in trackers table
+            result = conn.execute(
+                text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'trackers' AND column_name = 'user_id'
+            """)
+            )
+            user_id_column = result.fetchone()
+            if not user_id_column:
+                logger.error("✗ Missing user_id column in trackers table")
+                sys.exit(1)
+            logger.info("✓ User ownership column verified")
+
+            # Verify foreign key constraint exists
+            result = conn.execute(
+                text("""
+                SELECT constraint_name 
+                FROM information_schema.table_constraints 
+                WHERE table_name = 'trackers' 
+                AND constraint_type = 'FOREIGN KEY'
+                AND constraint_name LIKE '%user%'
+            """)
+            )
+            fk_constraint = result.fetchone()
+            if not fk_constraint:
+                logger.error("✗ Missing foreign key constraint from trackers to users")
+                sys.exit(1)
+            logger.info("✓ Foreign key constraint verified")
+
             # Test basic operations
             result = conn.execute(text("SELECT COUNT(*) FROM trackers"))
             tracker_count = result.fetchone()[0]
+
+            result = conn.execute(text("SELECT COUNT(*) FROM users"))
+            user_count = result.fetchone()[0]
+
             logger.info(
-                "✓ Database operations working (found %d trackers)", tracker_count
+                "✓ Database operations working (found %d trackers, %d users)",
+                tracker_count,
+                user_count,
             )
 
         logger.info("✓ Database setup verification complete")

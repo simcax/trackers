@@ -242,10 +242,17 @@ class TrackerDashboard {
             this.setButtonLoading(button, true);
             
             // Submit value to web endpoint
-            const submitResult = await this.submitTrackerValue(trackerId, result.value, result.date);
+            // Parse Danish number format before submitting
+            const parsedValue = this.parseDanishNumber(result.value);
+            const formattedValue = isNaN(parsedValue) ? result.value : parsedValue.toString();
+            
+            const submitResult = await this.submitTrackerValue(trackerId, formattedValue, result.date);
             
             if (submitResult.success) {
-                this.showToast(`Added value ${result.value} for ${result.date} to ${trackerName}`, 'success');
+                // Show success message with Danish formatted number
+                const displayValue = isNaN(parsedValue) ? result.value : this.formatDanishNumber(parsedValue);
+                const displayDate = this.formatDanishDate(result.date);
+                this.showToast(`Added value ${displayValue} for ${displayDate} to ${trackerName}`, 'success');
                 
                 // Update the tracker card with new data
                 await this.refreshTrackerCard(trackerId);
@@ -327,8 +334,10 @@ class TrackerDashboard {
      */
     showValueInputModal(trackerName) {
         return new Promise((resolve) => {
-            // Get today's date in YYYY-MM-DD format
+            // Get today's date in YYYY-MM-DD format for the input
             const today = new Date().toISOString().split('T')[0];
+            // Get today's date in Danish format for display
+            const todayDanish = this.formatDanishDate(today);
             
             // Create modal HTML
             const modalHtml = `
@@ -345,7 +354,7 @@ class TrackerDashboard {
                                     value="${today}"
                                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 >
-                                <p class="text-xs text-gray-400 mt-1">Select the date for this value</p>
+                                <p class="text-xs text-gray-400 mt-1">Select the date for this value (today: ${todayDanish})</p>
                             </div>
                             
                             <div>
@@ -353,11 +362,11 @@ class TrackerDashboard {
                                 <input 
                                     type="text" 
                                     id="value-input" 
-                                    placeholder="Enter value..."
+                                    placeholder="Enter value (use comma for decimals)..."
                                     class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     autocomplete="off"
                                 >
-                                <p class="text-xs text-gray-400 mt-1">Enter a numeric value or text</p>
+                                <p class="text-xs text-gray-400 mt-1">Enter a numeric value (e.g., 1.234,56 or 42,5)</p>
                             </div>
                             
                             <div class="flex space-x-3">
@@ -474,7 +483,7 @@ class TrackerDashboard {
                     <div class="space-y-6">
                         <!-- Chart Container -->
                         <div class="bg-gray-700 rounded-lg p-4 h-64 flex items-center justify-center">
-                            <div id="chart-container" class="w-full h-full">
+                            <div id="chart-container" class="w-full h-full bg-gray-700 rounded">
                                 ${this.generateSimpleChart(values)}
                             </div>
                         </div>
@@ -718,6 +727,64 @@ class TrackerDashboard {
     }
     
     /**
+     * Parse Danish number format (convert comma decimals to dots)
+     * @param {string} numberString - Number string in Danish format
+     * @returns {number} - Parsed number
+     */
+    parseDanishNumber(numberString) {
+        if (typeof numberString !== 'string') {
+            return parseFloat(numberString) || 0;
+        }
+        
+        // Replace Danish decimal comma with dot and remove thousand separators
+        const normalized = numberString
+            .replace(/\./g, '') // Remove thousand separators (dots)
+            .replace(/,/g, '.'); // Replace decimal comma with dot
+        
+        return parseFloat(normalized) || 0;
+    }
+    
+    /**
+     * Format date using Danish format (dd-mm-yyyy)
+     * @param {string} dateString - Date string in ISO format
+     * @returns {string} - Formatted date
+     */
+    formatDanishDate(dateString) {
+        try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) {
+                return dateString; // Return original if invalid
+            }
+            
+            // Format as dd-mm-yyyy
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const year = date.getFullYear();
+            
+            return `${day}-${month}-${year}`;
+        } catch (error) {
+            return dateString; // Return original if error
+        }
+    }
+    
+    /**
+     * Format number using Danish conventions (. for thousands, , for decimals)
+     * @param {number} number - Number to format
+     * @returns {string} - Formatted number
+     */
+    formatDanishNumber(number) {
+        if (typeof number !== 'number' || isNaN(number)) {
+            return '0';
+        }
+        
+        // Use Danish locale formatting
+        return number.toLocaleString('da-DK', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2
+        });
+    }
+    
+    /**
      * Generate simple SVG chart for values
      * @param {Array} values - Array of tracker values
      * @returns {string} - SVG chart HTML
@@ -768,14 +835,17 @@ class TrackerDashboard {
         }).join(' ');
         
         return `
-            <svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" class="text-blue-400">
+            <svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" class="text-blue-400" style="background-color: #374151;">
+                <!-- Background -->
+                <rect width="100%" height="100%" fill="#374151" />
+                
                 <!-- Grid lines -->
                 <defs>
-                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.2"/>
+                    <pattern id="grid-${Date.now()}" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#6b7280" stroke-width="0.5" opacity="0.3"/>
                     </pattern>
                 </defs>
-                <rect width="100%" height="100%" fill="url(#grid)" />
+                <rect width="100%" height="100%" fill="url(#grid-${Date.now()})" />
                 
                 <!-- Chart line -->
                 <polyline 
@@ -795,11 +865,11 @@ class TrackerDashboard {
                 }).join('')}
                 
                 <!-- Labels -->
-                <text x="${padding}" y="${height - 10}" fill="currentColor" font-size="12" opacity="0.7">
-                    ${minValue.toFixed(1)}
+                <text x="${padding}" y="${height - 10}" fill="#d1d5db" font-size="12" opacity="0.8">
+                    ${this.formatDanishNumber(minValue)}
                 </text>
-                <text x="${width - padding}" y="${height - 10}" fill="currentColor" font-size="12" opacity="0.7" text-anchor="end">
-                    ${maxValue.toFixed(1)}
+                <text x="${width - padding}" y="${height - 10}" fill="#d1d5db" font-size="12" opacity="0.8" text-anchor="end">
+                    ${this.formatDanishNumber(maxValue)}
                 </text>
             </svg>
         `;
@@ -825,10 +895,10 @@ class TrackerDashboard {
             if (previousValue !== null && !isNaN(currentValue) && !isNaN(previousValue)) {
                 const change = currentValue - previousValue;
                 if (change > 0) {
-                    changeText = `+${change.toFixed(1)}`;
+                    changeText = `+${this.formatDanishNumber(change)}`;
                     changeClass = 'text-green-400';
                 } else if (change < 0) {
-                    changeText = change.toFixed(1);
+                    changeText = this.formatDanishNumber(change);
                     changeClass = 'text-red-400';
                 } else {
                     changeText = '0';
@@ -836,10 +906,13 @@ class TrackerDashboard {
                 }
             }
             
+            // Format the date in Danish format (dd-mm-yyyy)
+            const formattedDate = this.formatDanishDate(value.date);
+            
             return `
                 <tr class="border-b border-gray-600">
-                    <td class="py-2">${value.date}</td>
-                    <td class="py-2 font-medium">${value.value}</td>
+                    <td class="py-2">${formattedDate}</td>
+                    <td class="py-2 font-medium">${this.formatDanishNumber(parseFloat(value.value))}</td>
                     <td class="py-2 ${changeClass}">${changeText}</td>
                 </tr>
             `;
