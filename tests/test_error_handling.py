@@ -27,6 +27,10 @@ def test_missing_environment_variables_error_message():
             "DB_USER": "",
             "DB_PASSWORD": "",
             "DB_NAME": "",
+            "POSTGRESQL_ADDON_HOST": "",
+            "POSTGRESQL_ADDON_USER": "",
+            "POSTGRESQL_ADDON_PASSWORD": "",
+            "POSTGRESQL_ADDON_DB": "",
         },
         clear=False,
     ):
@@ -62,6 +66,10 @@ def test_partial_missing_environment_variables():
             "DB_USER": "testuser",
             "DB_PASSWORD": "",  # Missing
             "DB_NAME": "",  # Missing
+            "POSTGRESQL_ADDON_HOST": "",
+            "POSTGRESQL_ADDON_USER": "",
+            "POSTGRESQL_ADDON_PASSWORD": "",
+            "POSTGRESQL_ADDON_DB": "",
         },
         clear=False,
     ):
@@ -88,6 +96,10 @@ def test_valid_environment_variables_no_error():
             "DB_USER": "testuser",
             "DB_PASSWORD": "testpass",
             "DB_NAME": "testdb",
+            "POSTGRESQL_ADDON_HOST": "",
+            "POSTGRESQL_ADDON_USER": "",
+            "POSTGRESQL_ADDON_PASSWORD": "",
+            "POSTGRESQL_ADDON_DB": "",
         },
         clear=False,
     ):

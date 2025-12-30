@@ -2,10 +2,11 @@
 Test to verify the production fix for web form authentication.
 
 This test demonstrates that the fix resolves the issue where:
-- Creating trackers worked (because routes were public)
-- Adding values to trackers failed (because @api_key_required decorator still enforced auth)
+- Web interface should be public (no authentication required)
+- API endpoints should require authentication
+- The production fix ensures JavaScript uses web endpoints instead of API endpoints
 
-After the fix, both operations require authentication consistently.
+After the fix, web routes are public and API routes require authentication.
 """
 
 import os
@@ -15,7 +16,7 @@ import pytest
 
 from trackers import create_app
 from trackers.db.database import SessionLocal
-from trackers.db.trackerdb import create_tracker
+from trackers.models.tracker_model import TrackerModel
 
 
 class TestProductionFix:
@@ -39,66 +40,66 @@ class TestProductionFix:
             if "API_KEYS" in os.environ:
                 del os.environ["API_KEYS"]
 
-    def test_web_routes_now_require_authentication(self, app_with_auth):
-        """Test that web routes now consistently require authentication."""
+    def test_web_routes_are_public_after_fix(self, app_with_auth):
+        """Test that web routes are public and don't require authentication (production fix)."""
         app, api_key = app_with_auth
         client = app.test_client()
 
-        # Verify that web routes are now protected
+        # Verify that web routes are NOT protected (they should be public)
         with app.app_context():
-            assert app.security_config.is_route_protected("/web/"), (
-                "Web dashboard should be protected"
+            assert not app.security_config.is_route_protected("/web/"), (
+                "Web dashboard should be public"
             )
-            assert app.security_config.is_route_protected("/web/tracker/create"), (
-                "Tracker creation should be protected"
+            assert not app.security_config.is_route_protected("/web/tracker/create"), (
+                "Tracker creation should be public"
             )
-            assert app.security_config.is_route_protected("/web/tracker/1/value"), (
-                "Value addition should be protected"
+            assert not app.security_config.is_route_protected("/web/tracker/1/value"), (
+                "Value addition should be public"
             )
 
-        # Test 1: Creating tracker without auth should fail
+        # Test 1: Creating tracker without auth should work (public access)
         response = client.post(
             "/web/tracker/create",
-            data={"name": "Unauthorized Tracker", "description": "This should fail"},
-        )
-        assert response.status_code == 401, "Creating tracker without auth should fail"
-
-        # Test 2: Creating tracker with auth should work
-        response = client.post(
-            "/web/tracker/create",
-            data={"name": "Authorized Tracker", "description": "This should work"},
-            headers={"Authorization": f"Bearer {api_key}"},
+            data={
+                "name": "Public Tracker",
+                "description": "This should work without auth",
+            },
         )
         assert response.status_code in [200, 201, 302], (
-            "Creating tracker with auth should work"
+            "Creating tracker without auth should work"
         )
 
-        # Create a tracker for value testing
+        # Test 2: Web dashboard should be accessible without auth
+        response = client.get("/web/")
+        assert response.status_code == 200, (
+            "Web dashboard should be accessible without auth"
+        )
+
+        # Test 3: Create a tracker for value testing
+        response = client.post(
+            "/web/tracker/create",
+            data={"name": "Test Tracker for Values", "description": "Test"},
+        )
+        assert response.status_code in [200, 201, 302], "Creating tracker should work"
+
+        # Get the tracker ID from the database for testing
         db = SessionLocal()
         try:
-            tracker = create_tracker(
-                db, name="Test Tracker for Values", description="Test"
+            tracker = (
+                db.query(TrackerModel).filter_by(name="Test Tracker for Values").first()
             )
-            db.commit()
+            assert tracker is not None, "Tracker should be created"
             tracker_id = tracker.id
         finally:
             db.close()
 
-        # Test 3: Adding value without auth should fail
+        # Test 4: Adding value without auth should work (public access)
         response = client.post(
             f"/web/tracker/{tracker_id}/value",
             data={"value": "42", "date": datetime.now().strftime("%Y-%m-%d")},
-        )
-        assert response.status_code == 401, "Adding value without auth should fail"
-
-        # Test 4: Adding value with auth should work
-        response = client.post(
-            f"/web/tracker/{tracker_id}/value",
-            data={"value": "42", "date": datetime.now().strftime("%Y-%m-%d")},
-            headers={"Authorization": f"Bearer {api_key}"},
         )
         assert response.status_code in [200, 201, 302], (
-            "Adding value with auth should work"
+            "Adding value without auth should work"
         )
 
     def test_api_routes_still_work(self, app_with_auth):

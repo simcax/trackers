@@ -2,15 +2,46 @@
 
 from datetime import date
 
+from trackers.auth.token_validator import UserInfo
 from trackers.models.tracker_model import TrackerModel
 from trackers.models.tracker_value_model import TrackerValueModel
+from trackers.services.user_service import UserService
+
+
+def create_test_user_info(
+    google_id="test_google_123",
+    email="test@example.com",
+    name="Test User",
+    picture_url="https://example.com/profile.jpg",
+    verified_email=True,
+):
+    """Helper function to create test UserInfo object."""
+    return UserInfo(
+        google_id=google_id,
+        email=email,
+        name=name,
+        picture_url=picture_url,
+        verified_email=verified_email,
+    )
+
+
+def create_test_user(db_session, google_id="test_google_123", email="test@example.com"):
+    """Helper function to create a test user and return the user model."""
+    user_service = UserService(db_session)
+    user_info = create_test_user_info(google_id=google_id, email=email)
+    user = user_service.create_or_update_user(user_info)
+    db_session.commit()
+    return user
 
 
 def test_create_and_query_tracker(db_session):
     """Test creating a tracker and querying it back from the database."""
+    # Create a test user first
+    user = create_test_user(db_session)
+
     # Create a new tracker
     tracker = TrackerModel(
-        name="Test Tracker", description="A test tracker for testing"
+        name="Test Tracker", description="A test tracker for testing", user_id=user.id
     )
     db_session.add(tracker)
     db_session.flush()  # Flush to get ID without committing
@@ -25,10 +56,14 @@ def test_create_and_query_tracker(db_session):
     assert queried_tracker.name == "Test Tracker"
     assert queried_tracker.description == "A test tracker for testing"
     assert queried_tracker.id is not None
+    assert queried_tracker.user_id == user.id
 
 
 def test_tracker_values_relationship_empty(db_session):
     """Test that a new tracker has an empty values relationship."""
+    # Create a test user first
+    user = create_test_user(db_session)
+
     # Create a new tracker with unique name
     import uuid
 
@@ -36,6 +71,7 @@ def test_tracker_values_relationship_empty(db_session):
     tracker = TrackerModel(
         name=f"Empty Values Tracker {suffix}",
         description="Should have no values initially",
+        user_id=user.id,
     )
     db_session.add(tracker)
     db_session.flush()
@@ -47,6 +83,9 @@ def test_tracker_values_relationship_empty(db_session):
 
 def test_tracker_values_relationship_with_values(db_session):
     """Test that tracker values relationship works correctly with actual values."""
+    # Create a test user first
+    user = create_test_user(db_session)
+
     # Create a tracker with unique name
     import uuid
 
@@ -54,6 +93,7 @@ def test_tracker_values_relationship_with_values(db_session):
     tracker = TrackerModel(
         name=f"Values Test Tracker {suffix}",
         description="For testing values relationship",
+        user_id=user.id,
     )
     db_session.add(tracker)
     db_session.flush()
@@ -91,6 +131,9 @@ def test_tracker_values_relationship_with_values(db_session):
 
 def test_tracker_cascade_delete_orm_level(db_session):
     """Test that deleting a tracker cascades to delete its values at ORM level."""
+    # Create a test user first
+    user = create_test_user(db_session)
+
     # Create a tracker with unique name
     import uuid
 
@@ -98,6 +141,7 @@ def test_tracker_cascade_delete_orm_level(db_session):
     tracker = TrackerModel(
         name=f"Cascade Delete Tracker {suffix}",
         description="Will be deleted with values",
+        user_id=user.id,
     )
     db_session.add(tracker)
     db_session.flush()
@@ -137,12 +181,19 @@ def test_tracker_cascade_delete_orm_level(db_session):
 
 def test_tracker_values_relationship_isolation(db_session):
     """Test that values are properly isolated between different trackers."""
+    # Create a test user first
+    user = create_test_user(db_session)
+
     # Create two trackers with unique names
     import uuid
 
     suffix = str(uuid.uuid4())[:8]
-    tracker1 = TrackerModel(name=f"Tracker 1 {suffix}", description="First tracker")
-    tracker2 = TrackerModel(name=f"Tracker 2 {suffix}", description="Second tracker")
+    tracker1 = TrackerModel(
+        name=f"Tracker 1 {suffix}", description="First tracker", user_id=user.id
+    )
+    tracker2 = TrackerModel(
+        name=f"Tracker 2 {suffix}", description="Second tracker", user_id=user.id
+    )
     db_session.add_all([tracker1, tracker2])
     db_session.flush()
 

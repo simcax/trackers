@@ -3,19 +3,27 @@
 beautifulsoup4==4.14.3
 blinker==1.9.0
     # via flask
+certifi==2025.11.12
+    # via requests
+cffi==2.0.0 ; platform_python_implementation != 'PyPy'
+    # via cryptography
+charset-normalizer==3.4.4
+    # via requests
 click==8.3.0
     # via flask
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   pytest
-dotenv==0.9.9
+cryptography==46.0.3
     # via trackers
 flask==3.1.2
     # via trackers
 greenlet==3.2.4 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'
     # via sqlalchemy
 hypothesis==6.148.2
+idna==3.11
+    # via requests
 iniconfig==2.3.0
     # via pytest
 itsdangerous==2.2.0
@@ -29,17 +37,23 @@ markupsafe==3.0.3
     #   werkzeug
 packaging==25.0
     # via pytest
+pillow==12.0.0
+    # via trackers
 pluggy==1.6.0
     # via pytest
 psycopg2-binary==2.9.11
     # via trackers
+pycparser==2.23 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+    # via cffi
 pygments==2.19.2
     # via pytest
+pyjwt==2.10.1
+    # via trackers
 pytest==9.0.0
 python-dotenv==1.2.1
-    # via
-    #   dotenv
-    #   trackers
+    # via trackers
+requests==2.32.5
+    # via trackers
 sortedcontainers==2.4.0
     # via hypothesis
 soupsieve==2.8.1
@@ -50,5 +64,7 @@ typing-extensions==4.15.0
     # via
     #   beautifulsoup4
     #   sqlalchemy
+urllib3==2.6.2
+    # via requests
 werkzeug==3.1.3
     # via flask

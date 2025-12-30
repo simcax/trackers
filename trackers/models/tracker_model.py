@@ -1,4 +1,14 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from datetime import datetime
+
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 
 from trackers.db.database import Base
@@ -8,9 +18,22 @@ class TrackerModel(Base):
     __tablename__ = "trackers"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
+    name = Column(String, nullable=False, index=True)  # Remove unique constraint
     description = Column(String, nullable=True)
 
+    # User ownership - Requirements: 2.1, 2.2
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Timestamp fields for tracking creation and updates
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    # Relationships
+    user = relationship("UserModel", back_populates="trackers")
     items = relationship("ItemModel", back_populates="tracker")
     logs = relationship("LogModel", back_populates="tracker")
     values = relationship(
@@ -18,6 +41,13 @@ class TrackerModel(Base):
         back_populates="tracker",
         cascade="all, delete-orphan",
         order_by="TrackerValueModel.date.desc()",
+    )
+
+    # Constraints and indexes - Requirements: 2.2, 2.3
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="unique_user_tracker_name"),
+        Index("idx_user_trackers", "user_id"),
+        Index("idx_tracker_created", "created_at"),
     )
 
 

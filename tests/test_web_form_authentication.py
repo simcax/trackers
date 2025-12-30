@@ -179,15 +179,15 @@ class TestWebFormAuthentication:
             print(f"Protected routes: {protected_routes}")
             print(f"Public routes: {public_routes}")
 
-            # Check if web routes are protected
-            assert app.security_config.is_route_protected("/web/"), (
-                "Web dashboard should be protected"
+            # Check if web routes are public (production fix)
+            assert not app.security_config.is_route_protected("/web/"), (
+                "Web dashboard should be public"
             )
-            assert app.security_config.is_route_protected("/web/tracker/create"), (
-                "Tracker creation should be protected"
+            assert not app.security_config.is_route_protected("/web/tracker/create"), (
+                "Tracker creation should be public"
             )
-            assert app.security_config.is_route_protected("/web/tracker/1/value"), (
-                "Value addition should be protected"
+            assert not app.security_config.is_route_protected("/web/tracker/1/value"), (
+                "Value addition should be public"
             )
 
     def test_route_protection_patterns(self, app_with_api_key):

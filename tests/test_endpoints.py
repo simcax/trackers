@@ -13,6 +13,14 @@ def test_add_tracker_endpoint_database_persistence(client, db_session):
         "/add_tracker",
         json={"name": "Test Tracker Endpoint", "description": "Test Description"},
     )
+
+    # Debug: print response details if not 201
+    if response.status_code != 201:
+        print(f"Response status: {response.status_code}")
+        print(f"Response data: {response.get_data(as_text=True)}")
+        if hasattr(response, "json") and response.json:
+            print(f"Response JSON: {response.json}")
+
     assert response.status_code == 201
     assert response.json["message"] == "Tracker added successfully"
     assert "tracker" in response.json

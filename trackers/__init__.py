@@ -43,6 +43,12 @@ def create_app(test_config=None):
     # Initialize security system with comprehensive logging and validation (Requirements: 3.1, 3.2, 4.1)
     _initialize_security_system(app)
 
+    # Initialize Google OAuth authentication if configured
+    _initialize_google_auth(app)
+
+    # Initialize unified authentication system
+    _initialize_unified_auth(app)
+
     # register error handlers
     register_error_handlers(app)
 
@@ -140,6 +146,86 @@ def create_app(test_config=None):
         return "Hello, World!"
 
     return app
+
+
+def _initialize_unified_auth(app):
+    """
+    Initialize the unified authentication system.
+
+    This function integrates Google OAuth authentication with the existing
+    API key authentication system, providing a unified authentication
+    experience that supports both methods.
+
+    Requirements: 5.3, 5.4 - Integration with existing security system
+    """
+    try:
+        from trackers.auth.integration import init_unified_auth
+
+        # Initialize the unified authentication system
+        unified_auth = init_unified_auth(app)
+
+        app.logger.info("✓ Unified authentication system initialized")
+        app.logger.info(
+            f"✓ Available auth methods: {', '.join(unified_auth.available_auth_methods)}"
+        )
+
+        # Store reference in app for access in routes
+        app.unified_auth = unified_auth
+
+    except Exception as e:
+        app.logger.warning(f"Failed to initialize unified authentication: {e}")
+        app.logger.info(
+            "Application will continue with individual authentication systems"
+        )
+
+
+def _initialize_google_auth(app):
+    """
+    Initialize Google OAuth authentication if configured.
+
+    This function conditionally enables Google OAuth authentication based on
+    environment variable configuration. If Google OAuth credentials are not
+    configured, the application continues without OAuth functionality.
+
+    Requirements: 8.1, 8.2, 8.3 - Security hardening for OAuth
+    """
+    try:
+        # Try to import and initialize Google OAuth configuration
+        from trackers.auth.config import google_oauth_config
+
+        if google_oauth_config is not None:
+            # Import auth routes and initialize
+            from trackers.auth.auth_routes import init_auth_routes
+
+            # Initialize auth routes with configuration
+            auth_bp = init_auth_routes(google_oauth_config)
+
+            # Register auth blueprint
+            app.register_blueprint(auth_bp)
+
+            app.logger.info("✓ Google OAuth authentication enabled")
+            app.logger.info(f"✓ OAuth client ID: {google_oauth_config.client_id}")
+            app.logger.info(f"✓ OAuth redirect URI: {google_oauth_config.redirect_uri}")
+
+            # Configure session security for OAuth
+            from trackers.auth.session_manager import SessionManager
+
+            session_manager = SessionManager()
+            session_manager.configure_flask_session_security(app)
+
+            app.logger.info("✓ Session security configured for OAuth")
+
+        else:
+            app.logger.info(
+                "Google OAuth not configured - OAuth endpoints will not be available"
+            )
+            app.logger.info(
+                "To enable OAuth, set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI"
+            )
+
+    except Exception as e:
+        app.logger.warning(f"Failed to initialize Google OAuth: {e}")
+        app.logger.info("Application will continue without OAuth authentication")
 
 
 def _initialize_security_system(app):
@@ -257,10 +343,11 @@ def _run_migration(app):
 
     This function implements automatic schema creation functionality by:
     - Importing all models to register them with Base.metadata
-    - Running the migration engine to detect and create missing tables
+    - Running the enhanced migration engine with integrated user migration
+    - Providing comprehensive error handling and reporting
     - Ensuring proper timing so migration completes before routes are available
 
-    Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 4.1, 4.2, 4.3, 4.4
+    Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4
     """
     try:
         # Import all models to ensure they are registered with Base.metadata
@@ -269,15 +356,25 @@ def _run_migration(app):
         from trackers.db.migration import MigrationEngine
         from trackers.models.tracker_model import ItemModel, LogModel, TrackerModel
         from trackers.models.tracker_value_model import TrackerValueModel
+        from trackers.models.user_model import UserModel  # Import UserModel
 
-        # Create migration engine with all registered models
-        migration_engine = MigrationEngine(engine, Base.metadata, app.logger)
+        # Create enhanced migration engine with integrated user migration
+        # Requirements: 3.1, 3.2, 3.3, 3.4, 3.5
+        migration_engine = MigrationEngine(
+            engine=engine,
+            metadata=Base.metadata,
+            logger=app.logger,
+            timeout_seconds=60,  # Increased timeout for user migration
+            enable_user_migration=True,
+        )
 
-        # Run automatic schema creation (Requirements: 2.1, 2.4, 2.5)
-        app.logger.info("Starting automatic database migration...")
-        migration_result = migration_engine.run_migration()
+        # Run complete migration process (schema + user migration)
+        # Requirements: 2.1, 2.4, 2.5, 3.1, 3.2, 3.3
+        app.logger.info("Starting comprehensive database migration...")
+        migration_result = migration_engine.run_complete_migration()
 
-        # Handle migration results (Requirements: 4.4, 4.5)
+        # Handle migration results with comprehensive reporting
+        # Requirements: 4.4, 4.5, 3.5
         if migration_result.success:
             app.logger.info(
                 f"Database migration completed successfully in {migration_result.duration_seconds:.2f}s"
@@ -286,6 +383,26 @@ def _run_migration(app):
                 app.logger.info(
                     f"Created tables: {', '.join(migration_result.tables_created)}"
                 )
+
+            # Report user migration results if available
+            if migration_result.user_migration_result:
+                user_result = migration_result.user_migration_result
+                if user_result.success:
+                    app.logger.info(
+                        f"User migration completed successfully in {user_result.duration_seconds:.2f}s"
+                    )
+                    if user_result.orphaned_trackers_migrated > 0:
+                        app.logger.info(
+                            f"Migrated {user_result.orphaned_trackers_migrated} existing trackers to default user"
+                        )
+                    if user_result.users_table_created:
+                        app.logger.info("Created users table for user ownership")
+                    if user_result.trackers_table_modified:
+                        app.logger.info("Modified trackers table for user ownership")
+                else:
+                    app.logger.error(f"User migration failed: {user_result.message}")
+                    for error in user_result.errors:
+                        app.logger.error(f"User migration error: {error}")
         else:
             # Migration failure should not prevent application startup (Requirements: 4.4)
             app.logger.error(f"Database migration failed: {migration_result.message}")
@@ -294,6 +411,20 @@ def _run_migration(app):
             app.logger.warning(
                 "Application will continue startup despite migration failure"
             )
+
+        # Generate and log migration report for monitoring
+        # Requirements: 3.5
+        try:
+            migration_report = migration_engine.get_migration_report()
+            app.logger.info(
+                f"Migration health status: {migration_report.get('health', 'unknown')}"
+            )
+            if migration_report.get("health_message"):
+                app.logger.info(
+                    f"Migration status: {migration_report['health_message']}"
+                )
+        except Exception as e:
+            app.logger.warning(f"Failed to generate migration report: {e}")
 
     except Exception as e:
         # Ensure migration failures don't prevent application startup (Requirements: 4.4)

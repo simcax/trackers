@@ -212,7 +212,11 @@ class TrackerCharts {
                     daysAgo: daysAgo,
                     date: badge.dataset.date || ''
                 };
-            }).reverse(); // Reverse to get chronological order
+            });
+            
+            // Sort by daysAgo descending to get chronological order (oldest first for chart)
+            // Higher daysAgo = older date, so we want highest daysAgo first
+            values.sort((a, b) => b.daysAgo - a.daysAgo);
             
             // Get tracker color from icon or data attribute
             const colorElement = trackerCard.querySelector('[class*="bg-"]');

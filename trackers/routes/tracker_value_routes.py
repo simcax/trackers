@@ -2,14 +2,17 @@
 API routes for tracker value operations.
 
 This module provides RESTful endpoints for managing daily tracker values,
-including create, read, update, and delete operations with comprehensive error handling.
+including create, read, update, and delete operations with comprehensive error handling
+and user ownership access control.
 
-Validates: Requirements 2.1, 2.2, 2.5, 3.1, 3.2, 3.4, 4.1, 4.2, 5.1, 5.2, 5.3, 7.1, 7.2, 7.3, 7.4, 7.5
+Validates: Requirements 2.1, 2.2, 2.5, 3.1, 3.2, 3.4, 4.1, 4.2, 5.1, 5.2, 5.3, 6.1, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
 """
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy.exc import IntegrityError
 
+from trackers.auth.context import get_current_user
+from trackers.auth.decorators import require_auth
 from trackers.db import database as db_module
 from trackers.db.tracker_values_db import (
     create_or_update_value,
@@ -19,6 +22,7 @@ from trackers.db.tracker_values_db import (
     get_value,
     update_value,
 )
+from trackers.db.trackerdb import get_user_tracker
 from trackers.error_handling import (
     DatabaseError,
     ResourceNotFoundError,
@@ -27,10 +31,9 @@ from trackers.error_handling import (
     log_error,
     not_found_if_none,
 )
-from trackers.security.api_key_auth import api_key_required
+from trackers.services.user_service import UserService
 from trackers.validation.tracker_value_validation import (
     sanitize_value_input,
-    validate_tracker_exists,
     validate_update_data,
     validate_value_data,
 )
@@ -38,11 +41,66 @@ from trackers.validation.tracker_value_validation import (
 tracker_value_bp = Blueprint("tracker_value", __name__)
 
 
+def _verify_tracker_ownership(db, tracker_id, user_id):
+    """
+    Verify that a tracker belongs to the specified user.
+
+    Args:
+        db: Database session
+        tracker_id: ID of the tracker to verify
+        user_id: ID of the user who should own the tracker
+
+    Returns:
+        tuple: (tracker_exists, user_owns_tracker, tracker_object)
+
+    Validates: Requirements 6.1, 6.3, 6.4
+    """
+    # Check if tracker exists and is owned by user
+    user_tracker = get_user_tracker(db, tracker_id, user_id)
+    if user_tracker:
+        return True, True, user_tracker
+
+    # Check if tracker exists at all (for 403 vs 404 distinction)
+    from trackers.db.trackerdb import get_tracker as get_any_tracker
+
+    any_tracker = get_any_tracker(db, tracker_id)
+    if any_tracker:
+        return True, False, None  # Tracker exists but not owned by user
+    else:
+        return False, False, None  # Tracker doesn't exist
+
+
+def _get_current_database_user(db):
+    """
+    Get the current authenticated user's database record.
+
+    Args:
+        db: Database session
+
+    Returns:
+        tuple: (user_model, error_response)
+
+    Validates: Requirements 6.1
+    """
+    # Get current user from authentication context
+    current_user_info = get_current_user()
+    if not current_user_info:
+        return None, (jsonify({"error": "User authentication required"}), 401)
+
+    # Get user's database record
+    user_service = UserService(db)
+    current_user = user_service.get_user_by_google_id(current_user_info.google_id)
+    if not current_user:
+        return None, (jsonify({"error": "User not found in database"}), 401)
+
+    return current_user, None
+
+
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values", methods=["POST"])
-@api_key_required
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
 def create_tracker_value(tracker_id):
     """
-    Create or update a tracker value for a specific date.
+    Create or update a tracker value for a specific date with user ownership verification.
 
     Implements upsert logic - if a value already exists for the given
     tracker and date, it updates the existing record. Otherwise, creates new.
@@ -60,10 +118,12 @@ def create_tracker_value(tracker_id):
         201 Created: New value created
         200 OK: Existing value updated
         400 Bad Request: Validation errors
+        403 Forbidden: Tracker exists but not owned by user
         404 Not Found: Tracker doesn't exist
+        401 Unauthorized: User not authenticated
         500 Internal Server Error: Server error
 
-    Validates: Requirements 2.1, 2.2, 2.5, 7.1, 7.2, 7.3, 7.4, 7.5
+    Validates: Requirements 2.1, 2.2, 2.5, 6.1, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
     """
     try:
         data = request.get_json()
@@ -78,9 +138,22 @@ def create_tracker_value(tracker_id):
         # Get SessionLocal from the module
         db = db_module.SessionLocal()
         try:
-            # Validate tracker exists
-            if not validate_tracker_exists(db, tracker_id):
+            # Get current user and verify authentication
+            current_user, error_response = _get_current_database_user(db)
+            if error_response:
+                return error_response
+
+            # Verify tracker ownership
+            tracker_exists, user_owns_tracker, tracker = _verify_tracker_ownership(
+                db, tracker_id, current_user.id
+            )
+
+            if not tracker_exists:
                 raise ResourceNotFoundError("Tracker", tracker_id)
+            elif not user_owns_tracker:
+                return jsonify(
+                    {"error": "Access denied: tracker not owned by user"}
+                ), 403
 
             # Sanitize input
             sanitized_value = sanitize_value_input(data["value"])
@@ -138,10 +211,10 @@ def create_tracker_value(tracker_id):
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values/<date>", methods=["GET"])
-@api_key_required
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
 def get_tracker_value(tracker_id, date):
     """
-    Get a specific tracker value by tracker ID and date.
+    Get a specific tracker value by tracker ID and date with user ownership verification.
 
     Args:
         tracker_id: ID of the tracker
@@ -149,18 +222,33 @@ def get_tracker_value(tracker_id, date):
 
     Returns:
         200 OK: Value found and returned
+        403 Forbidden: Tracker exists but not owned by user
         404 Not Found: Value or tracker doesn't exist
+        401 Unauthorized: User not authenticated
         500 Internal Server Error: Server error
 
-    Validates: Requirements 3.1, 3.2, 7.1, 7.2, 7.3, 7.4, 7.5
+    Validates: Requirements 3.1, 3.2, 6.1, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
     """
     try:
         # Get SessionLocal from the module
         db = db_module.SessionLocal()
         try:
-            # Validate tracker exists
-            if not validate_tracker_exists(db, tracker_id):
+            # Get current user and verify authentication
+            current_user, error_response = _get_current_database_user(db)
+            if error_response:
+                return error_response
+
+            # Verify tracker ownership
+            tracker_exists, user_owns_tracker, tracker = _verify_tracker_ownership(
+                db, tracker_id, current_user.id
+            )
+
+            if not tracker_exists:
                 raise ResourceNotFoundError("Tracker", tracker_id)
+            elif not user_owns_tracker:
+                return jsonify(
+                    {"error": "Access denied: tracker not owned by user"}
+                ), 403
 
             # Get the value
             tracker_value = get_value(db, tracker_id, date)
@@ -204,10 +292,10 @@ def get_tracker_value(tracker_id, date):
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values", methods=["GET"])
-@api_key_required
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
 def get_tracker_values_list(tracker_id):
     """
-    Get all values for a tracker, optionally filtered by date range.
+    Get all values for a tracker with user ownership verification, optionally filtered by date range.
 
     Args:
         tracker_id: ID of the tracker
@@ -218,11 +306,13 @@ def get_tracker_values_list(tracker_id):
 
     Returns:
         200 OK: Values found and returned (may be empty array)
+        403 Forbidden: Tracker exists but not owned by user
         404 Not Found: Tracker doesn't exist
         400 Bad Request: Invalid date format
+        401 Unauthorized: User not authenticated
         500 Internal Server Error: Server error
 
-    Validates: Requirements 3.3, 3.4, 3.5, 7.1, 7.2, 7.3, 7.4, 7.5
+    Validates: Requirements 3.3, 3.4, 3.5, 6.1, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
     """
     try:
         # Get query parameters
@@ -232,9 +322,22 @@ def get_tracker_values_list(tracker_id):
         # Get SessionLocal from the module
         db = db_module.SessionLocal()
         try:
-            # Validate tracker exists
-            if not validate_tracker_exists(db, tracker_id):
+            # Get current user and verify authentication
+            current_user, error_response = _get_current_database_user(db)
+            if error_response:
+                return error_response
+
+            # Verify tracker ownership
+            tracker_exists, user_owns_tracker, tracker = _verify_tracker_ownership(
+                db, tracker_id, current_user.id
+            )
+
+            if not tracker_exists:
                 raise ResourceNotFoundError("Tracker", tracker_id)
+            elif not user_owns_tracker:
+                return jsonify(
+                    {"error": "Access denied: tracker not owned by user"}
+                ), 403
 
             # Get values with optional date range filtering
             tracker_values = get_tracker_values(db, tracker_id, start_date, end_date)
@@ -276,10 +379,10 @@ def get_tracker_values_list(tracker_id):
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values/<date>", methods=["PUT"])
-@api_key_required
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
 def update_tracker_value(tracker_id, date):
     """
-    Update an existing tracker value.
+    Update an existing tracker value with user ownership verification.
 
     Args:
         tracker_id: ID of the tracker
@@ -293,10 +396,12 @@ def update_tracker_value(tracker_id, date):
     Returns:
         200 OK: Value updated successfully
         400 Bad Request: Validation errors
+        403 Forbidden: Tracker exists but not owned by user
         404 Not Found: Value or tracker doesn't exist
+        401 Unauthorized: User not authenticated
         500 Internal Server Error: Server error
 
-    Validates: Requirements 4.1, 4.2, 4.3, 7.1, 7.2, 7.3, 7.4, 7.5
+    Validates: Requirements 4.1, 4.2, 4.3, 6.1, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
     """
     try:
         data = request.get_json()
@@ -311,9 +416,22 @@ def update_tracker_value(tracker_id, date):
         # Get SessionLocal from the module
         db = db_module.SessionLocal()
         try:
-            # Validate tracker exists
-            if not validate_tracker_exists(db, tracker_id):
+            # Get current user and verify authentication
+            current_user, error_response = _get_current_database_user(db)
+            if error_response:
+                return error_response
+
+            # Verify tracker ownership
+            tracker_exists, user_owns_tracker, tracker = _verify_tracker_ownership(
+                db, tracker_id, current_user.id
+            )
+
+            if not tracker_exists:
                 raise ResourceNotFoundError("Tracker", tracker_id)
+            elif not user_owns_tracker:
+                return jsonify(
+                    {"error": "Access denied: tracker not owned by user"}
+                ), 403
 
             # Sanitize input
             sanitized_value = sanitize_value_input(data["value"])
@@ -368,10 +486,10 @@ def update_tracker_value(tracker_id, date):
 @tracker_value_bp.route(
     "/api/trackers/<int:tracker_id>/values/<date>", methods=["DELETE"]
 )
-@api_key_required
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
 def delete_tracker_value(tracker_id, date):
     """
-    Delete a specific tracker value.
+    Delete a specific tracker value with user ownership verification.
 
     Args:
         tracker_id: ID of the tracker
@@ -379,18 +497,33 @@ def delete_tracker_value(tracker_id, date):
 
     Returns:
         204 No Content: Value deleted successfully
+        403 Forbidden: Tracker exists but not owned by user
         404 Not Found: Value or tracker doesn't exist
+        401 Unauthorized: User not authenticated
         500 Internal Server Error: Server error
 
-    Validates: Requirements 5.1, 5.2, 5.3, 7.1, 7.2, 7.3, 7.4, 7.5
+    Validates: Requirements 5.1, 5.2, 5.3, 6.1, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
     """
     try:
         # Get SessionLocal from the module
         db = db_module.SessionLocal()
         try:
-            # Validate tracker exists
-            if not validate_tracker_exists(db, tracker_id):
+            # Get current user and verify authentication
+            current_user, error_response = _get_current_database_user(db)
+            if error_response:
+                return error_response
+
+            # Verify tracker ownership
+            tracker_exists, user_owns_tracker, tracker = _verify_tracker_ownership(
+                db, tracker_id, current_user.id
+            )
+
+            if not tracker_exists:
                 raise ResourceNotFoundError("Tracker", tracker_id)
+            elif not user_owns_tracker:
+                return jsonify(
+                    {"error": "Access denied: tracker not owned by user"}
+                ), 403
 
             # Delete value
             deleted = delete_value(db, tracker_id, date)
@@ -428,28 +561,43 @@ def delete_tracker_value(tracker_id, date):
 
 
 @tracker_value_bp.route("/api/trackers/<int:tracker_id>/values", methods=["DELETE"])
-@api_key_required
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
 def delete_all_tracker_values_endpoint(tracker_id):
     """
-    Delete all values for a specific tracker.
+    Delete all values for a specific tracker with user ownership verification.
 
     Args:
         tracker_id: ID of the tracker
 
     Returns:
         200 OK: Values deleted successfully with count
+        403 Forbidden: Tracker exists but not owned by user
         404 Not Found: Tracker doesn't exist
+        401 Unauthorized: User not authenticated
         500 Internal Server Error: Server error
 
-    Validates: Requirements 5.4, 7.1, 7.2, 7.3, 7.4, 7.5
+    Validates: Requirements 5.4, 6.1, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4, 7.5
     """
     try:
         # Get SessionLocal from the module
         db = db_module.SessionLocal()
         try:
-            # Validate tracker exists
-            if not validate_tracker_exists(db, tracker_id):
+            # Get current user and verify authentication
+            current_user, error_response = _get_current_database_user(db)
+            if error_response:
+                return error_response
+
+            # Verify tracker ownership
+            tracker_exists, user_owns_tracker, tracker = _verify_tracker_ownership(
+                db, tracker_id, current_user.id
+            )
+
+            if not tracker_exists:
                 raise ResourceNotFoundError("Tracker", tracker_id)
+            elif not user_owns_tracker:
+                return jsonify(
+                    {"error": "Access denied: tracker not owned by user"}
+                ), 403
 
             # Delete all values for the tracker
             deleted_count = delete_all_tracker_values(db, tracker_id)

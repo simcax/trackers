@@ -741,11 +741,12 @@ class TrackerDashboard {
         const height = 200;
         const padding = 40;
         
-        // Extract numeric values
+        // Extract numeric values and reverse for chronological order (oldest first)
         const numericValues = values
             .map(v => parseFloat(v.value))
             .filter(v => !isNaN(v))
-            .slice(0, 30); // Last 30 values
+            .slice(0, 30) // Last 30 values
+            .reverse(); // Reverse to get chronological order (oldest first)
         
         if (numericValues.length === 0) {
             return `

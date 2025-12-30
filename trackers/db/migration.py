@@ -3,9 +3,10 @@ Database migration engine for automatic schema management.
 
 This module provides automatic database migration functionality that detects
 missing database schema during Flask application startup and applies necessary
-changes using SQLAlchemy metadata.
+changes using SQLAlchemy metadata. It includes support for user ownership
+migration and comprehensive error handling.
 
-Requirements: 1.1, 1.2, 1.3, 1.4, 1.5
+Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 3.1, 3.2, 3.3, 3.4, 3.5
 """
 
 import logging
@@ -15,10 +16,13 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Engine, MetaData, inspect, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
+
+if TYPE_CHECKING:
+    from .user_migration import UserMigrationResult
 
 
 class MigrationLockException(Exception):
@@ -154,6 +158,7 @@ class MigrationResult:
     errors: List[str]
     duration_seconds: float
     message: str
+    user_migration_result: Optional["UserMigrationResult"] = None
 
 
 @dataclass
@@ -417,11 +422,44 @@ class MigrationLogger:
         self.logger.debug(f"Troubleshooting: {info}")
 
 
+@dataclass
+class UserSchemaStatus:
+    """
+    Represents the current state of user ownership schema.
+
+    Requirements: 2.1, 5.1
+    """
+
+    users_table_exists: bool
+    trackers_has_user_id: bool
+    user_foreign_key_exists: bool
+    user_constraints_valid: bool
+    migration_needed: bool
+    schema_errors: List[str]
+
+
+@dataclass
+class ForeignKeyValidationResult:
+    """
+    Detailed analysis of foreign key relationships.
+
+    Requirements: 2.1, 5.1
+    """
+
+    valid: bool
+    missing_foreign_keys: List[str]
+    invalid_constraints: List[str]
+    orphaned_references: List[str]
+    validation_errors: List[str]
+
+
 class SchemaDetector:
     """
     Analyzes the current database state and determines what schema changes are needed.
 
-    Requirements: 1.1, 1.2, 1.3, 1.4
+    Enhanced to detect user ownership requirements and validate foreign key relationships.
+
+    Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 5.1
     """
 
     def __init__(self, engine: Engine, metadata: MetaData):
@@ -462,14 +500,287 @@ class SchemaDetector:
             # Return all expected tables if we can't inspect the database
             return list(self.metadata.tables.keys())
 
+    def detect_user_schema_status(self) -> UserSchemaStatus:
+        """
+        Detect the current state of user ownership schema requirements.
+
+        Analyzes the database to determine if user ownership features are properly
+        implemented, including users table, user_id column in trackers, and
+        foreign key relationships.
+
+        Returns:
+            UserSchemaStatus with detailed analysis of user ownership schema
+
+        Requirements: 2.1, 5.1
+        """
+        try:
+            # Check if users table is expected in metadata
+            if "users" not in self.metadata.tables:
+                # If users table is not expected, user ownership is not needed
+                return UserSchemaStatus(
+                    users_table_exists=False,
+                    trackers_has_user_id=False,
+                    user_foreign_key_exists=False,
+                    user_constraints_valid=True,  # Valid because not required
+                    migration_needed=False,  # No migration needed
+                    schema_errors=[],
+                )
+
+            inspector = inspect(self.engine)
+            existing_tables = set(inspector.get_table_names())
+            schema_errors = []
+
+            # Check if users table exists
+            users_table_exists = "users" in existing_tables
+            if not users_table_exists:
+                schema_errors.append("Users table is missing")
+
+            # Check if trackers table has user_id column
+            trackers_has_user_id = False
+            if "trackers" in existing_tables:
+                try:
+                    columns = inspector.get_columns("trackers")
+                    column_names = [col["name"] for col in columns]
+                    trackers_has_user_id = "user_id" in column_names
+                    if not trackers_has_user_id:
+                        schema_errors.append("Trackers table missing user_id column")
+                except Exception as e:
+                    schema_errors.append(f"Failed to inspect trackers table: {e}")
+            else:
+                schema_errors.append("Trackers table is missing")
+
+            # Check foreign key relationship between trackers and users
+            user_foreign_key_exists = False
+            if users_table_exists and trackers_has_user_id:
+                try:
+                    foreign_keys = inspector.get_foreign_keys("trackers")
+                    for fk in foreign_keys:
+                        if fk.get("referred_table") == "users" and "user_id" in fk.get(
+                            "constrained_columns", []
+                        ):
+                            user_foreign_key_exists = True
+                            break
+                    if not user_foreign_key_exists:
+                        schema_errors.append(
+                            "Foreign key constraint missing between trackers.user_id and users.id"
+                        )
+                except Exception as e:
+                    schema_errors.append(f"Failed to inspect foreign keys: {e}")
+
+            # Validate user constraints (unique constraints, indexes)
+            user_constraints_valid = True
+            if users_table_exists and trackers_has_user_id:
+                try:
+                    # Check for unique constraint on user_id + name in trackers
+                    unique_constraints = inspector.get_unique_constraints("trackers")
+                    user_name_unique = False
+                    for constraint in unique_constraints:
+                        columns = constraint.get("column_names", [])
+                        if "user_id" in columns and "name" in columns:
+                            user_name_unique = True
+                            break
+
+                    if not user_name_unique:
+                        schema_errors.append(
+                            "Unique constraint missing for user_id + name in trackers table"
+                        )
+                        user_constraints_valid = False
+
+                    # Check for index on user_id for performance
+                    indexes = inspector.get_indexes("trackers")
+                    user_id_indexed = False
+                    for index in indexes:
+                        columns = index.get("column_names", [])
+                        if "user_id" in columns:
+                            user_id_indexed = True
+                            break
+
+                    if not user_id_indexed:
+                        self.logger.debug(
+                            "Performance recommendation: Consider adding index on trackers.user_id"
+                        )
+
+                except Exception as e:
+                    schema_errors.append(f"Failed to validate user constraints: {e}")
+                    user_constraints_valid = False
+
+            # Determine if migration is needed
+            migration_needed = not (
+                users_table_exists
+                and trackers_has_user_id
+                and user_foreign_key_exists
+                and user_constraints_valid
+            )
+
+            self.logger.debug("User schema analysis:")
+            self.logger.debug(f"  Users table exists: {users_table_exists}")
+            self.logger.debug(f"  Trackers has user_id: {trackers_has_user_id}")
+            self.logger.debug(f"  Foreign key exists: {user_foreign_key_exists}")
+            self.logger.debug(f"  Constraints valid: {user_constraints_valid}")
+            self.logger.debug(f"  Migration needed: {migration_needed}")
+
+            return UserSchemaStatus(
+                users_table_exists=users_table_exists,
+                trackers_has_user_id=trackers_has_user_id,
+                user_foreign_key_exists=user_foreign_key_exists,
+                user_constraints_valid=user_constraints_valid,
+                migration_needed=migration_needed,
+                schema_errors=schema_errors,
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to detect user schema status: {e}")
+            return UserSchemaStatus(
+                users_table_exists=False,
+                trackers_has_user_id=False,
+                user_foreign_key_exists=False,
+                user_constraints_valid=False,
+                migration_needed=True,
+                schema_errors=[f"User schema detection failed: {e}"],
+            )
+
+    def is_user_migration_needed(self) -> bool:
+        """
+        Check if user ownership migration is needed.
+
+        Returns:
+            True if user ownership migration is required, False otherwise
+
+        Requirements: 2.1, 5.1
+        """
+        try:
+            status = self.detect_user_schema_status()
+            return status.migration_needed
+        except Exception as e:
+            self.logger.error(f"Failed to check if user migration is needed: {e}")
+            # Assume migration is needed if we can't determine
+            return True
+
+    def validate_foreign_key_relationships(self) -> ForeignKeyValidationResult:
+        """
+        Validate foreign key relationships and constraints across the database.
+
+        Performs comprehensive validation of all foreign key relationships,
+        checking for missing constraints, orphaned references, and constraint
+        integrity.
+
+        Returns:
+            ForeignKeyValidationResult with detailed validation information
+
+        Requirements: 2.1, 5.1
+        """
+        try:
+            inspector = inspect(self.engine)
+            existing_tables = set(inspector.get_table_names())
+
+            missing_foreign_keys = []
+            invalid_constraints = []
+            orphaned_references = []
+            validation_errors = []
+
+            # Validate expected foreign key relationships from metadata
+            for table_name, table in self.metadata.tables.items():
+                if table_name not in existing_tables:
+                    continue  # Skip tables that don't exist yet
+
+                try:
+                    # Get actual foreign keys from database
+                    actual_fks = inspector.get_foreign_keys(table_name)
+                    actual_fk_map = {}
+                    for fk in actual_fks:
+                        for col in fk.get("constrained_columns", []):
+                            actual_fk_map[col] = fk.get("referred_table")
+
+                    # Check expected foreign keys from metadata
+                    for column in table.columns:
+                        if column.foreign_keys:
+                            for fk in column.foreign_keys:
+                                expected_table = fk.column.table.name
+                                column_name = column.name
+
+                                # Check if foreign key exists in database
+                                if column_name not in actual_fk_map:
+                                    missing_foreign_keys.append(
+                                        f"{table_name}.{column_name} -> {expected_table}"
+                                    )
+                                elif actual_fk_map[column_name] != expected_table:
+                                    invalid_constraints.append(
+                                        f"{table_name}.{column_name} references {actual_fk_map[column_name]} but should reference {expected_table}"
+                                    )
+
+                    # Check for orphaned references (foreign key points to non-existent records)
+                    if table_name == "trackers" and "user_id" in [
+                        col["name"] for col in inspector.get_columns(table_name)
+                    ]:
+                        try:
+                            with self.engine.connect() as conn:
+                                # Check for trackers with user_id that don't reference existing users
+                                if "users" in existing_tables:
+                                    result = conn.execute(
+                                        text("""
+                                        SELECT COUNT(*) FROM trackers t 
+                                        LEFT JOIN users u ON t.user_id = u.id 
+                                        WHERE t.user_id IS NOT NULL AND u.id IS NULL
+                                    """)
+                                    )
+                                    orphaned_count = result.scalar()
+                                    if orphaned_count > 0:
+                                        orphaned_references.append(
+                                            f"{orphaned_count} trackers reference non-existent users"
+                                        )
+                        except Exception as e:
+                            validation_errors.append(
+                                f"Failed to check orphaned references: {e}"
+                            )
+
+                except Exception as e:
+                    validation_errors.append(
+                        f"Failed to validate foreign keys for table {table_name}: {e}"
+                    )
+
+            # Overall validation result
+            is_valid = (
+                len(missing_foreign_keys) == 0
+                and len(invalid_constraints) == 0
+                and len(orphaned_references) == 0
+                and len(validation_errors) == 0
+            )
+
+            self.logger.debug("Foreign key validation:")
+            self.logger.debug(f"  Valid: {is_valid}")
+            self.logger.debug(f"  Missing FKs: {len(missing_foreign_keys)}")
+            self.logger.debug(f"  Invalid constraints: {len(invalid_constraints)}")
+            self.logger.debug(f"  Orphaned references: {len(orphaned_references)}")
+
+            return ForeignKeyValidationResult(
+                valid=is_valid,
+                missing_foreign_keys=missing_foreign_keys,
+                invalid_constraints=invalid_constraints,
+                orphaned_references=orphaned_references,
+                validation_errors=validation_errors,
+            )
+
+        except Exception as e:
+            self.logger.error(f"Foreign key validation failed: {e}")
+            return ForeignKeyValidationResult(
+                valid=False,
+                missing_foreign_keys=[],
+                invalid_constraints=[],
+                orphaned_references=[],
+                validation_errors=[f"Foreign key validation failed: {e}"],
+            )
+
     def validate_existing_schema(self) -> SchemaValidationResult:
         """
         Validate the existing database schema against expected metadata.
 
+        Enhanced with detailed schema analysis including user ownership validation
+        and foreign key relationship checking.
+
         Returns:
             SchemaValidationResult with detailed validation information
 
-        Requirements: 1.3, 2.4
+        Requirements: 1.3, 2.4, 2.1, 5.1
         """
         try:
             inspector = inspect(self.engine)
@@ -480,7 +791,7 @@ class SchemaDetector:
             unexpected_tables = list(existing_tables - expected_tables)
             schema_errors = []
 
-            # Check for schema consistency issues
+            # Basic table existence validation
             for table_name in expected_tables.intersection(existing_tables):
                 try:
                     # Basic validation - table exists and is accessible
@@ -488,7 +799,37 @@ class SchemaDetector:
                 except Exception as e:
                     schema_errors.append(f"Table {table_name} validation failed: {e}")
 
+            # Enhanced validation: User ownership schema
+            if "users" in expected_tables or "trackers" in expected_tables:
+                user_status = self.detect_user_schema_status()
+                schema_errors.extend(user_status.schema_errors)
+
+            # Enhanced validation: Foreign key relationships
+            fk_validation = self.validate_foreign_key_relationships()
+            if not fk_validation.valid:
+                schema_errors.extend(
+                    [
+                        f"Missing foreign keys: {', '.join(fk_validation.missing_foreign_keys)}"
+                        if fk_validation.missing_foreign_keys
+                        else None,
+                        f"Invalid constraints: {', '.join(fk_validation.invalid_constraints)}"
+                        if fk_validation.invalid_constraints
+                        else None,
+                        f"Orphaned references: {', '.join(fk_validation.orphaned_references)}"
+                        if fk_validation.orphaned_references
+                        else None,
+                    ]
+                )
+                schema_errors.extend(fk_validation.validation_errors)
+                # Remove None values
+                schema_errors = [error for error in schema_errors if error is not None]
+
             is_valid = len(missing_tables) == 0 and len(schema_errors) == 0
+
+            self.logger.debug("Enhanced schema validation:")
+            self.logger.debug(f"  Valid: {is_valid}")
+            self.logger.debug(f"  Missing tables: {len(missing_tables)}")
+            self.logger.debug(f"  Schema errors: {len(schema_errors)}")
 
             return SchemaValidationResult(
                 valid=is_valid,
@@ -515,6 +856,77 @@ class SchemaDetector:
         Requirements: 1.4
         """
         return list(self.metadata.tables.keys())
+
+    def get_detailed_schema_analysis(self) -> dict:
+        """
+        Get comprehensive schema analysis including user ownership and foreign key validation.
+
+        Provides detailed reporting for migration status with enhanced analysis
+        of user ownership requirements and foreign key relationships.
+
+        Returns:
+            Dictionary with comprehensive schema analysis
+
+        Requirements: 2.1, 5.1
+        """
+        try:
+            # Basic schema analysis
+            missing_tables = self.detect_missing_tables()
+            schema_validation = self.validate_existing_schema()
+
+            # User ownership analysis
+            user_schema_status = self.detect_user_schema_status()
+
+            # Foreign key analysis
+            fk_validation = self.validate_foreign_key_relationships()
+
+            # Build comprehensive analysis
+            analysis = {
+                "basic_schema": {
+                    "expected_tables": self.get_expected_tables(),
+                    "missing_tables": missing_tables,
+                    "unexpected_tables": schema_validation.unexpected_tables,
+                    "migration_needed": len(missing_tables) > 0,
+                },
+                "user_ownership": {
+                    "users_table_exists": user_schema_status.users_table_exists,
+                    "trackers_has_user_id": user_schema_status.trackers_has_user_id,
+                    "foreign_key_exists": user_schema_status.user_foreign_key_exists,
+                    "constraints_valid": user_schema_status.user_constraints_valid,
+                    "migration_needed": user_schema_status.migration_needed,
+                    "schema_errors": user_schema_status.schema_errors,
+                },
+                "foreign_key_validation": {
+                    "valid": fk_validation.valid,
+                    "missing_foreign_keys": fk_validation.missing_foreign_keys,
+                    "invalid_constraints": fk_validation.invalid_constraints,
+                    "orphaned_references": fk_validation.orphaned_references,
+                    "validation_errors": fk_validation.validation_errors,
+                },
+                "overall_status": {
+                    "schema_valid": schema_validation.valid,
+                    "migration_needed": (
+                        len(missing_tables) > 0
+                        or user_schema_status.migration_needed
+                        or not fk_validation.valid
+                    ),
+                    "total_errors": len(schema_validation.schema_errors),
+                    "all_errors": schema_validation.schema_errors,
+                },
+            }
+
+            self.logger.debug("Generated detailed schema analysis")
+            return analysis
+
+        except Exception as e:
+            self.logger.error(f"Failed to generate detailed schema analysis: {e}")
+            return {
+                "error": str(e),
+                "basic_schema": {"migration_needed": True},
+                "user_ownership": {"migration_needed": True},
+                "foreign_key_validation": {"valid": False},
+                "overall_status": {"schema_valid": False, "migration_needed": True},
+            }
 
 
 class MigrationExecutor:
@@ -767,6 +1179,9 @@ class MigrationEngine:
     """
     Central coordinator that orchestrates the entire migration process.
 
+    This class now includes integrated user migration functionality to handle
+    the transition from non-user to user-ownership database schema.
+
     Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5
     """
 
@@ -776,11 +1191,13 @@ class MigrationEngine:
         metadata: MetaData,
         logger: Optional[logging.Logger] = None,
         timeout_seconds: int = 30,
+        enable_user_migration: bool = True,
     ):
         self.engine = engine
         self.metadata = metadata
         self.logger = logger or logging.getLogger(__name__)
         self.timeout_seconds = timeout_seconds
+        self.enable_user_migration = enable_user_migration
         self.migration_logger = MigrationLogger(self.logger)
         self.schema_detector = SchemaDetector(engine, metadata)
         self.migration_executor = MigrationExecutor(
@@ -886,6 +1303,26 @@ class MigrationEngine:
 
                     # Log completion
                     self.migration_logger.log_migration_complete(result)
+
+                    # Run user migration if enabled and basic migration succeeded
+                    # Requirements: 3.1, 3.2, 3.3, 3.4, 3.5
+                    if self.enable_user_migration and result.success:
+                        # Only run user migration if users table is in metadata
+                        if "users" in self.metadata.tables:
+                            user_migration_result = self._run_user_migration()
+                            result.user_migration_result = user_migration_result
+
+                            # Update overall success based on user migration
+                            if not user_migration_result.success:
+                                result.success = False
+                                result.errors.extend(user_migration_result.errors)
+                                result.message += f" (User migration failed: {user_migration_result.message})"
+                        else:
+                            # Skip user migration if users table not in metadata
+                            self.migration_logger.logger.info(
+                                "Skipping user migration - users table not in metadata"
+                            )
+
                     return result
 
         except MigrationLockException as e:
@@ -965,12 +1402,15 @@ class MigrationEngine:
 
     def get_migration_status(self) -> MigrationStatus:
         """
-        Get current migration status.
+        Get current migration status with enhanced analysis.
+
+        Enhanced to include user ownership schema analysis and detailed
+        foreign key validation for comprehensive migration reporting.
 
         Returns:
             MigrationStatus with current database state
 
-        Requirements: 1.1, 1.2, 1.3, 3.5
+        Requirements: 1.1, 1.2, 1.3, 3.5, 2.1, 5.1
         """
         try:
             # Test database connectivity
@@ -990,11 +1430,25 @@ class MigrationEngine:
             existing_tables = inspector.get_table_names()
             missing_tables = self.schema_detector.detect_missing_tables()
 
+            # Enhanced analysis: Check if user ownership migration is also needed
+            # Only check user migration if users table is expected in metadata
+            user_migration_needed = False
+            if self.enable_user_migration and "users" in self.metadata.tables:
+                try:
+                    user_migration_needed = (
+                        self.schema_detector.is_user_migration_needed()
+                    )
+                except Exception as e:
+                    self.logger.debug(f"Could not check user migration status: {e}")
+
+            # Overall migration needed if either basic tables missing or user migration needed
+            migration_needed = len(missing_tables) > 0 or user_migration_needed
+
             return MigrationStatus(
                 database_exists=True,
                 tables_exist=existing_tables,
                 missing_tables=missing_tables,
-                migration_needed=len(missing_tables) > 0,
+                migration_needed=migration_needed,
                 connection_healthy=True,
             )
 
@@ -1089,3 +1543,243 @@ class MigrationEngine:
         except Exception as e:
             self.logger.debug(f"Database connection test failed: {e}")
             return False
+
+    def _run_user_migration(self) -> "UserMigrationResult":
+        """
+        Run user ownership migration as part of the main migration process.
+
+        This method integrates user migration functionality directly into the
+        main migration engine, providing comprehensive reporting and error handling.
+
+        Returns:
+            UserMigrationResult with migration details
+
+        Requirements: 3.1, 3.2, 3.3, 3.4, 3.5
+        """
+        try:
+            # Import UserMigrationEngine here to avoid circular imports
+            from .user_migration import UserMigrationEngine, UserMigrationResult
+
+            self.migration_logger.log_migration_phase(
+                "User Migration", "Starting user ownership migration"
+            )
+
+            # Create user migration engine
+            user_migration_engine = UserMigrationEngine(
+                engine=self.engine,
+                metadata=self.metadata,
+                logger=self.logger,
+                timeout_seconds=self.timeout_seconds,
+            )
+
+            # Run user migration
+            result = user_migration_engine.run_user_migration()
+
+            # Log user migration results
+            if result.success:
+                self.migration_logger.logger.info(
+                    f"✓ User migration completed successfully in {result.duration_seconds:.2f}s"
+                )
+                if result.orphaned_trackers_migrated > 0:
+                    self.migration_logger.logger.info(
+                        f"✓ Migrated {result.orphaned_trackers_migrated} existing trackers to default user"
+                    )
+            else:
+                self.migration_logger.logger.error(
+                    f"✗ User migration failed: {result.message}"
+                )
+                for error in result.errors:
+                    self.migration_logger.logger.error(f"  - {error}")
+
+            return result
+
+        except Exception as e:
+            # Handle user migration errors gracefully
+            self.migration_logger.log_error(e, "user migration integration")
+
+            # Import here to avoid circular imports
+            from .user_migration import UserMigrationResult
+
+            return UserMigrationResult(
+                success=False,
+                users_table_created=False,
+                trackers_table_modified=False,
+                default_user_created=False,
+                orphaned_trackers_migrated=0,
+                errors=[f"User migration integration failed: {e}"],
+                duration_seconds=0.0,
+                message=f"User migration integration failed: {e}",
+            )
+
+    def run_complete_migration(self) -> MigrationResult:
+        """
+        Run complete migration including both schema and user migrations.
+
+        This method provides a comprehensive migration that includes:
+        1. Basic schema migration (tables, indexes, constraints)
+        2. User ownership migration (users table, tracker ownership)
+        3. Data migration (existing trackers to default user)
+        4. Comprehensive reporting and error handling
+
+        Returns:
+            MigrationResult with complete migration details
+
+        Requirements: 3.1, 3.2, 3.3, 3.4, 3.5
+        """
+        return self.run_migration()
+
+    def run_migration_legacy(self) -> MigrationResult:
+        """
+        Legacy method that runs migration without user migration for backward compatibility.
+
+        This method provides the old behavior for existing tests and code that
+        expects the original migration behavior without user migration integration.
+
+        Returns:
+            MigrationResult with basic migration details (no user migration)
+        """
+        # Temporarily disable user migration for legacy behavior
+        original_setting = self.enable_user_migration
+        self.enable_user_migration = False
+
+        try:
+            result = self.run_migration()
+            return result
+        finally:
+            # Restore original setting
+            self.enable_user_migration = original_setting
+
+    def get_migration_report(self) -> dict:
+        """
+        Get comprehensive migration status report including enhanced schema analysis.
+
+        Enhanced to provide detailed information about user ownership schema,
+        foreign key relationships, and comprehensive migration status for
+        monitoring and debugging purposes.
+
+        Returns:
+            Dictionary with comprehensive migration status information
+
+        Requirements: 3.5, 2.1, 5.1
+        """
+        try:
+            # Get basic migration status
+            status = self.get_migration_status()
+
+            # Get enhanced schema analysis
+            detailed_analysis = self.schema_detector.get_detailed_schema_analysis()
+
+            # Get user migration status
+            user_migration_status = {}
+            if self.enable_user_migration:
+                try:
+                    from .user_migration import UserMigrationEngine
+
+                    user_migration_engine = UserMigrationEngine(
+                        self.engine, self.metadata, self.logger
+                    )
+                    user_migration_status = user_migration_engine.get_migration_status()
+                except Exception as e:
+                    user_migration_status = {
+                        "error": f"Failed to get user migration status: {e}"
+                    }
+
+            # Build comprehensive report with enhanced analysis
+            report = {
+                "schema_migration": {
+                    "database_exists": status.database_exists,
+                    "connection_healthy": status.connection_healthy,
+                    "migration_needed": status.migration_needed,
+                    "existing_tables": status.tables_exist,
+                    "missing_tables": status.missing_tables,
+                    "total_expected_tables": len(self.metadata.tables.keys()),
+                    "total_existing_tables": len(status.tables_exist),
+                },
+                "user_migration": user_migration_status,
+                "detailed_analysis": detailed_analysis,
+                "configuration": {
+                    "timeout_seconds": self.timeout_seconds,
+                    "user_migration_enabled": self.enable_user_migration,
+                },
+                "database_info": {
+                    "expected_tables": list(self.metadata.tables.keys()),
+                },
+            }
+
+            # Enhanced health assessment using detailed analysis
+            schema_healthy = status.connection_healthy and not status.migration_needed
+            user_healthy = not user_migration_status.get("migration_needed", False)
+            detailed_healthy = detailed_analysis.get("overall_status", {}).get(
+                "schema_valid", False
+            )
+
+            if schema_healthy and user_healthy and detailed_healthy:
+                report["health"] = "healthy"
+                report["health_message"] = "Database is healthy and up to date"
+            elif status.connection_healthy:
+                needed_migrations = []
+                if status.migration_needed:
+                    needed_migrations.append("schema migration")
+                if user_migration_status.get("migration_needed"):
+                    needed_migrations.append("user migration")
+                if not detailed_healthy:
+                    needed_migrations.append("schema validation fixes")
+
+                report["health"] = "needs_migration"
+                report["health_message"] = (
+                    f"Database needs: {', '.join(needed_migrations)}"
+                )
+            else:
+                report["health"] = "unhealthy"
+                report["health_message"] = "Database connection is not healthy"
+
+            # Add summary of issues found
+            total_issues = 0
+            issue_summary = []
+
+            if detailed_analysis.get("basic_schema", {}).get("missing_tables"):
+                missing_count = len(detailed_analysis["basic_schema"]["missing_tables"])
+                total_issues += missing_count
+                issue_summary.append(f"{missing_count} missing tables")
+
+            if detailed_analysis.get("user_ownership", {}).get("schema_errors"):
+                user_errors = len(detailed_analysis["user_ownership"]["schema_errors"])
+                total_issues += user_errors
+                issue_summary.append(f"{user_errors} user ownership issues")
+
+            if not detailed_analysis.get("foreign_key_validation", {}).get(
+                "valid", True
+            ):
+                fk_issues = len(
+                    detailed_analysis["foreign_key_validation"].get(
+                        "missing_foreign_keys", []
+                    )
+                )
+                fk_issues += len(
+                    detailed_analysis["foreign_key_validation"].get(
+                        "invalid_constraints", []
+                    )
+                )
+                fk_issues += len(
+                    detailed_analysis["foreign_key_validation"].get(
+                        "orphaned_references", []
+                    )
+                )
+                if fk_issues > 0:
+                    total_issues += fk_issues
+                    issue_summary.append(f"{fk_issues} foreign key issues")
+
+            report["issue_summary"] = {
+                "total_issues": total_issues,
+                "issues": issue_summary,
+            }
+
+            return report
+
+        except Exception as e:
+            self.logger.error(f"Failed to generate migration report: {e}")
+            return {
+                "error": str(e),
+                "health": "error",
+                "health_message": f"Failed to assess migration status: {e}",
+            }
