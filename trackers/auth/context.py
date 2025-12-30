@@ -234,6 +234,19 @@ def configure_user_context(app):
 
                 image_utils_available = False
 
+            # Import admin functions with defensive error handling
+            try:
+                from trackers.auth.admin import is_admin_user
+
+                admin_functions_available = True
+            except ImportError as e:
+                logger.warning(f"Admin functions not available: {e}")
+
+                def is_admin_user(email=None):
+                    return False
+
+                admin_functions_available = False
+
             return {
                 "current_user": UserContextManager.get_current_user(),
                 "is_authenticated": UserContextManager.is_authenticated(),
@@ -245,6 +258,9 @@ def configure_user_context(app):
                 "get_avatar_initials": get_avatar_initials,
                 "get_safe_profile_image_url": get_safe_profile_image_url,
                 "image_utils_available": image_utils_available,
+                # Admin functions
+                "is_admin_user": is_admin_user,
+                "admin_functions_available": admin_functions_available,
             }
         except Exception as e:
             logger.error(f"Error injecting user context into templates: {str(e)}")

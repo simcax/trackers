@@ -64,81 +64,18 @@ def create_app(test_config=None):
     # register web UI blueprint
     app.register_blueprint(web_bp)
 
-    # Root route that provides navigation to the web interface
+    # Root route redirects to the web dashboard (main user interface)
     @app.route("/")
     def index():
         """
-        Root route that provides navigation to the web interface and API documentation.
+        Root route that redirects to the main web dashboard.
 
-        This serves as the main entry point for users accessing the application,
-        providing links to both the web UI and API endpoints.
-
-        Validates: Requirements 5.1, 5.5
+        This makes the tracker dashboard the default landing page for users,
+        providing immediate access to the main application functionality.
         """
-        from flask import render_template_string
+        from flask import redirect, url_for
 
-        # Simple HTML template with navigation links
-        template = """
-        <!DOCTYPE html>
-        <html lang="en" class="dark">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Tracker Application</title>
-            <link href="{{ url_for('static', filename='css/dist/output.css') }}" rel="stylesheet">
-            <style>
-                body { font-family: system-ui, -apple-system, sans-serif; }
-                .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
-                .card { background: #1f2937; border-radius: 0.5rem; padding: 1.5rem; margin: 1rem 0; }
-                .btn { display: inline-block; background: #3b82f6; color: white; padding: 0.75rem 1.5rem; 
-                       border-radius: 0.375rem; text-decoration: none; margin: 0.5rem 0.5rem 0.5rem 0; 
-                       transition: background-color 0.2s; }
-                .btn:hover { background: #2563eb; }
-                .btn-secondary { background: #6b7280; }
-                .btn-secondary:hover { background: #4b5563; }
-            </style>
-        </head>
-        <body class="bg-gray-900 text-white">
-            <div class="container">
-                <h1 class="text-4xl font-bold mb-8 text-center">Tracker Application</h1>
-                
-                <div class="card">
-                    <h2 class="text-2xl font-semibold mb-4">Web Interface</h2>
-                    <p class="text-gray-300 mb-4">
-                        Access the modern web interface to manage your trackers with an intuitive dashboard,
-                        data visualization, and easy-to-use forms.
-                    </p>
-                    <a href="/web/" class="btn">Open Web Dashboard</a>
-                </div>
-                
-                <div class="card">
-                    <h2 class="text-2xl font-semibold mb-4">API Endpoints</h2>
-                    <p class="text-gray-300 mb-4">
-                        Access the REST API for programmatic integration. All API endpoints require authentication.
-                    </p>
-                    <a href="/trackers" class="btn btn-secondary">View Trackers API</a>
-                    <a href="/health" class="btn btn-secondary">Health Check</a>
-                    <a href="/health/detailed" class="btn btn-secondary">Detailed Health</a>
-                </div>
-                
-                <div class="card">
-                    <h2 class="text-2xl font-semibold mb-4">System Status</h2>
-                    <p class="text-gray-300 mb-4">
-                        Monitor application health, database status, and migration information.
-                    </p>
-                    <a href="/health/migration" class="btn btn-secondary">Migration Status</a>
-                    <a href="/health/ready" class="btn btn-secondary">Readiness Check</a>
-                </div>
-                
-                <div class="text-center mt-8 text-gray-400">
-                    <p>Built with Flask, TailwindCSS, and Flowbite</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-
-        return render_template_string(template)
+        return redirect(url_for("web.dashboard"))
 
     # a simple page that says hello
     @app.route("/hello")

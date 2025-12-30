@@ -17,6 +17,8 @@ from typing import List, Optional
 from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 from sqlalchemy.exc import IntegrityError
 
+from trackers.auth.admin import get_admin_status_info
+from trackers.auth.admin_decorators import admin_required
 from trackers.auth.context import get_current_user, is_authenticated
 from trackers.auth.decorators import optional_auth, require_auth
 from trackers.db import database as db_module
@@ -673,6 +675,294 @@ def get_tracker_chart_data_web(tracker_id):
     except Exception as e:
         error_msg = f"Request processing error: {str(e)}"
         return jsonify({"error": error_msg}), 500
+
+
+@web_bp.route("/systems")
+@require_auth(allow_api_key=False, allow_google_oauth=True, redirect_to_login=True)
+@admin_required
+def systems_page():
+    """
+    Systems administration page - requires admin authorization.
+
+    Shows administrative tools and system monitoring for admin users only.
+    Admin users are configured via the ADMIN_USERS environment variable.
+    """
+    from flask import render_template_string
+
+    from trackers.auth.context import get_current_user, is_authenticated
+
+    # Get authentication context
+    current_user = get_current_user()
+    authenticated = is_authenticated()
+
+    # Get admin status information
+    admin_status = get_admin_status_info()
+
+    # Show systems administration page for admin users
+    template = """
+    <!DOCTYPE html>
+    <html lang="en" class="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Systems Administration - Tracker Application</title>
+        <link href="{{ url_for('static', filename='css/dist/output.css') }}" rel="stylesheet">
+        <style>
+            body { font-family: system-ui, -apple-system, sans-serif; }
+            .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+            .card { background: #1f2937; border-radius: 0.5rem; padding: 1.5rem; margin: 1rem 0; border: 1px solid #374151; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 0.75rem 1.5rem; 
+                   border-radius: 0.375rem; text-decoration: none; margin: 0.5rem 0.5rem 0.5rem 0; 
+                   transition: background-color 0.2s; font-weight: 500; }
+            .btn:hover { background: #2563eb; }
+            .btn-secondary { background: #6b7280; }
+            .btn-secondary:hover { background: #4b5563; }
+            .btn-success { background: #059669; }
+            .btn-success:hover { background: #047857; }
+            .btn-warning { background: #d97706; }
+            .btn-warning:hover { background: #b45309; }
+            .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+            .user-info { background: #065f46; border: 1px solid #059669; }
+            .admin-info { background: #7c2d12; border: 1px solid #ea580c; }
+        </style>
+    </head>
+    <body class="bg-gray-900 text-white">
+        <div class="container">
+            <!-- Header with user info -->
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-4xl font-bold">Systems Administration</h1>
+                    <p class="text-gray-400 mt-2">Administrative tools and system monitoring</p>
+                </div>
+                <div class="text-right">
+                    <a href="/web/" class="btn btn-success">← Back to Dashboard</a>
+                </div>
+            </div>
+            
+            {% if current_user %}
+            <div class="card user-info mb-6">
+                <h2 class="text-xl font-semibold mb-2 text-green-300">Authenticated User</h2>
+                <p class="text-green-100"><strong>Name:</strong> {{ current_user.name or 'N/A' }}</p>
+                <p class="text-green-100"><strong>Email:</strong> {{ current_user.email or 'N/A' }}</p>
+                {% if current_user.google_id %}
+                <p class="text-green-100"><strong>Google ID:</strong> {{ current_user.google_id }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <!-- Admin Status Information -->
+            <div class="card admin-info mb-6">
+                <h2 class="text-xl font-semibold mb-2 text-orange-300">Admin Authorization Status</h2>
+                <p class="text-orange-100"><strong>Admin System Enabled:</strong> {{ 'Yes' if admin_status.admin_system_enabled else 'No' }}</p>
+                <p class="text-orange-100"><strong>Admin Users Configured:</strong> {{ admin_status.admin_users_configured }}</p>
+                <p class="text-orange-100"><strong>Current User Is Admin:</strong> {{ 'Yes' if admin_status.current_user_is_admin else 'No' }}</p>
+                {% if admin_status.current_user_email %}
+                <p class="text-orange-100"><strong>Current User Email:</strong> {{ admin_status.current_user_email }}</p>
+                {% endif %}
+            </div>
+            
+            <div class="grid">
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-blue-300">API Endpoints</h2>
+                    <p class="text-gray-300 mb-4">
+                        Access the REST API for programmatic integration. All API endpoints require authentication.
+                    </p>
+                    <a href="/api/trackers" class="btn btn-secondary">Trackers API</a>
+                    <a href="/api/tracker-values" class="btn btn-secondary">Values API</a>
+                </div>
+                
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-green-300">Health Monitoring</h2>
+                    <p class="text-gray-300 mb-4">
+                        Monitor application health, database status, and system performance.
+                    </p>
+                    <a href="/health" class="btn btn-success">Basic Health</a>
+                    <a href="/health/detailed" class="btn btn-success">Detailed Health</a>
+                    <a href="/health/ready" class="btn btn-success">Readiness Check</a>
+                    <a href="/health/live" class="btn btn-success">Liveness Check</a>
+                </div>
+                
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-yellow-300">Database Management</h2>
+                    <p class="text-gray-300 mb-4">
+                        Database migration status, schema information, and maintenance tools.
+                    </p>
+                    <a href="/health/migration" class="btn btn-warning">Migration Status</a>
+                </div>
+                
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-purple-300">Authentication Testing</h2>
+                    <p class="text-gray-300 mb-4">
+                        Test different authentication methods and view authentication context.
+                    </p>
+                    <a href="/web/auth-demo" class="btn" style="background: #7c3aed;">Unified Auth Demo</a>
+                    <a href="/web/api-key-only-demo" class="btn" style="background: #7c3aed;">API Key Only</a>
+                    <a href="/web/oauth-only-demo" class="btn" style="background: #7c3aed;">OAuth Only</a>
+                </div>
+                
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-red-300">Development Tools</h2>
+                    <p class="text-gray-300 mb-4">
+                        Development and testing utilities for debugging and validation.
+                    </p>
+                    <a href="/web/test" class="btn" style="background: #dc2626;">UI Test Page</a>
+                    <a href="/static/test-danish-formatting.html" class="btn" style="background: #dc2626;">Danish Format Test</a>
+                </div>
+                
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-gray-300">System Information</h2>
+                    <p class="text-gray-300 mb-4">
+                        Application version, configuration, and runtime information.
+                    </p>
+                    <div class="text-sm text-gray-400 space-y-1">
+                        <p><strong>Framework:</strong> Flask with TailwindCSS</p>
+                        <p><strong>Database:</strong> PostgreSQL with SQLAlchemy</p>
+                        <p><strong>Authentication:</strong> API Key + Google OAuth</p>
+                        <p><strong>Deployment:</strong> Clever Cloud Platform</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-center mt-8 text-gray-500">
+                <p>Systems Administration Panel - Admin Access Only</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return render_template_string(
+        template,
+        current_user=current_user,
+        is_authenticated=authenticated,
+        admin_status=admin_status,
+    )
+
+
+@web_bp.route("/learn-more")
+def learn_more_page():
+    """
+    Public landing page explaining the tracker service.
+
+    Shows information about the tracker service and login options for unauthenticated users.
+    This page is publicly accessible and provides an overview of the application features.
+    """
+    from flask import render_template_string
+
+    template = """
+    <!DOCTYPE html>
+    <html lang="en" class="dark">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>About Trackers - Personal Progress Tracking</title>
+        <link href="{{ url_for('static', filename='css/dist/output.css') }}" rel="stylesheet">
+        <style>
+            body { font-family: system-ui, -apple-system, sans-serif; }
+            .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+            .card { background: #1f2937; border-radius: 0.5rem; padding: 1.5rem; margin: 1rem 0; border: 1px solid #374151; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 0.75rem 1.5rem; 
+                   border-radius: 0.375rem; text-decoration: none; margin: 0.5rem 0.5rem 0.5rem 0; 
+                   transition: background-color 0.2s; font-weight: 500; }
+            .btn:hover { background: #2563eb; }
+            .btn-success { background: #059669; }
+            .btn-success:hover { background: #047857; }
+            .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+            .hero { background: linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%); }
+        </style>
+    </head>
+    <body class="bg-gray-900 text-white">
+        <div class="container">
+            <!-- Hero Section -->
+            <div class="hero rounded-xl p-8 mb-8 text-center">
+                <h1 class="text-4xl font-bold mb-4">Welcome to Trackers</h1>
+                <p class="text-xl text-blue-100 mb-6 max-w-2xl mx-auto">
+                    A simple and powerful personal tracking application to help you monitor your habits, 
+                    track your progress, and achieve your goals.
+                </p>
+                <div class="space-y-3 sm:space-y-0 sm:space-x-4 sm:flex sm:justify-center">
+                    <a href="/auth/login" 
+                       class="btn btn-success inline-flex items-center space-x-2">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                        </svg>
+                        <span>Sign in with Google</span>
+                    </a>
+                    <a href="/web/" class="btn">View Dashboard</a>
+                </div>
+            </div>
+            
+            <!-- Features Grid -->
+            <div class="grid mb-8">
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-blue-300">🎯 Easy Habit Tracking</h2>
+                    <p class="text-gray-300 mb-4">
+                        Create custom trackers for any habit or metric you want to monitor. Whether it's daily steps, 
+                        water intake, reading time, or workout sessions - track anything that matters to you.
+                    </p>
+                    <ul class="text-gray-400 text-sm space-y-1">
+                        <li>• Custom tracker names and descriptions</li>
+                        <li>• Flexible value entry with date selection</li>
+                        <li>• Support for any unit of measurement</li>
+                    </ul>
+                </div>
+                
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-green-300">📈 Visual Progress</h2>
+                    <p class="text-gray-300 mb-4">
+                        See your progress at a glance with beautiful charts and trend visualizations. 
+                    </p>
+                    <ul class="text-gray-400 text-sm space-y-1">
+                        <li>• Interactive charts and graphs</li>
+                        <li>• Daily and total progress indicators</li>
+                        <li>• Danish number formatting support</li>
+                    </ul>
+                </div>
+                
+                <div class="card">
+                    <h2 class="text-2xl font-semibold mb-4 text-purple-300">🔒 Secure & Private</h2>
+                    <p class="text-gray-300 mb-4">
+                        Your data is secure and private. Sign in with your Google account for easy access, 
+                        and rest assured that your tracking data is only visible to you.
+                    </p>
+                    <ul class="text-gray-400 text-sm space-y-1">
+                        <li>• Google OAuth authentication</li>
+                        <li>• Personal data isolation</li>
+                        <li>• Secure cloud storage</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Getting Started -->
+            <div class="card text-center">
+                <h2 class="text-2xl font-semibold mb-4 text-yellow-300">🚀 Get Started Today</h2>
+                <p class="text-gray-300 mb-6 max-w-2xl mx-auto">
+                    Anyone with a Google account can sign in and start creating trackers immediately. 
+                    No complex setup, no subscription fees - just simple, effective progress tracking.
+                </p>
+                <a href="/auth/login" 
+                   class="btn btn-success inline-flex items-center space-x-2 text-lg px-8 py-4">
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    <span>Start Tracking Now</span>
+                </a>
+            </div>
+            
+            <div class="text-center mt-8 text-gray-500">
+                <p>Simple. Secure. Effective.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(template)
 
 
 @web_bp.route("/test")

@@ -196,6 +196,13 @@
                            aria-current="{% if request.endpoint == 'web.dashboard' %}page{% else %}false{% endif %}">
                             Dashboard
                         </a>
+                        {% if is_authenticated and is_admin_user() %}
+                        <a href="/web/systems" 
+                           class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors focus-visible min-touch-target"
+                           aria-current="{% if request.endpoint == 'web.systems_page' %}page{% else %}false{% endif %}">
+                            Systems
+                        </a>
+                        {% endif %}
                         {% endblock %}
                         
                         <!-- User Authentication Section -->
