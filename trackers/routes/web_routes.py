@@ -398,6 +398,70 @@ def add_tracker_value_web(tracker_id):
             return redirect(url_for("web.dashboard", error="request_error"))
 
 
+@web_bp.route("/tracker/<int:tracker_id>/chart-data", methods=["GET"])
+def get_tracker_chart_data_web(tracker_id):
+    """
+    Get tracker chart data for the web interface.
+
+    This endpoint provides chart data without requiring authentication,
+    making it accessible from the web interface.
+
+    Args:
+        tracker_id: ID of the tracker to get chart data for
+
+    Returns:
+        JSON response with tracker values for chart display
+    """
+    try:
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Check if tracker exists
+            from trackers.db.trackerdb import get_tracker
+
+            tracker = get_tracker(db, tracker_id)
+            if not tracker:
+                return jsonify({"error": "Tracker not found"}), 404
+
+            # Get tracker values for chart (last 30 values)
+            tracker_values = get_tracker_values(db, tracker_id)[:30]
+
+            # Format values for chart
+            chart_values = []
+            for value in tracker_values:
+                chart_values.append(
+                    {
+                        "date": value.date.isoformat(),
+                        "value": value.value,
+                        "created_at": value.created_at.isoformat()
+                        if value.created_at
+                        else None,
+                    }
+                )
+
+            return jsonify(
+                {
+                    "success": True,
+                    "tracker": {
+                        "id": tracker.id,
+                        "name": tracker.name,
+                        "description": tracker.description,
+                    },
+                    "values": chart_values,
+                }
+            ), 200
+
+        except Exception as e:
+            error_msg = f"Failed to fetch chart data: {str(e)}"
+            return jsonify({"error": error_msg}), 500
+        finally:
+            db.close()
+
+    except Exception as e:
+        error_msg = f"Request processing error: {str(e)}"
+        return jsonify({"error": error_msg}), 500
+
+
 @web_bp.route("/test")
 def test_page():
     """

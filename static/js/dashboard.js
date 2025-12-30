@@ -231,21 +231,21 @@ class TrackerDashboard {
         }
         
         try {
-            // Show input modal for value entry
-            const value = await this.showValueInputModal(trackerName);
+            // Show input modal for value and date entry
+            const result = await this.showValueInputModal(trackerName);
             
-            if (value === null || value.trim() === '') {
+            if (!result || !result.value || result.value.trim() === '') {
                 return; // User cancelled or entered empty value
             }
             
             // Set loading state
             this.setButtonLoading(button, true);
             
-            // Submit value to API
-            const result = await this.submitTrackerValue(trackerId, value);
+            // Submit value to web endpoint
+            const submitResult = await this.submitTrackerValue(trackerId, result.value, result.date);
             
-            if (result.success) {
-                this.showToast(`Added value ${value} to ${trackerName}`, 'success');
+            if (submitResult.success) {
+                this.showToast(`Added value ${result.value} for ${result.date} to ${trackerName}`, 'success');
                 
                 // Update the tracker card with new data
                 await this.refreshTrackerCard(trackerId);
@@ -255,7 +255,7 @@ class TrackerDashboard {
                     location.reload();
                 }, 2000);
             } else {
-                this.showToast(result.message || 'Failed to add value', 'error');
+                this.showToast(submitResult.message || 'Failed to add value', 'error');
             }
             
         } catch (error) {
@@ -292,11 +292,8 @@ class TrackerDashboard {
             if (trackerData.success) {
                 // Show chart modal with data
                 this.showChartModal(trackerName, trackerData.values);
-            } else if (trackerData.authRequired) {
-                // Show user-friendly message for authentication requirement
-                this.showToast('Chart data is not available in this view. The web interface focuses on adding values.', 'info');
             } else {
-                this.showToast('Failed to load chart data', 'error');
+                this.showToast(trackerData.message || 'Failed to load chart data', 'error');
             }
             
         } catch (error) {
@@ -326,10 +323,13 @@ class TrackerDashboard {
     /**
      * Show input modal for entering tracker value
      * @param {string} trackerName - Name of the tracker
-     * @returns {Promise<string|null>} - Entered value or null if cancelled
+     * @returns {Promise<Object|null>} - Entered value and date or null if cancelled
      */
     showValueInputModal(trackerName) {
         return new Promise((resolve) => {
+            // Get today's date in YYYY-MM-DD format
+            const today = new Date().toISOString().split('T')[0];
+            
             // Create modal HTML
             const modalHtml = `
                 <div id="value-input-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
@@ -338,7 +338,18 @@ class TrackerDashboard {
                         
                         <div class="space-y-4">
                             <div>
-                                <label class="block text-sm font-medium text-gray-300 mb-2">Today's Value:</label>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Date:</label>
+                                <input 
+                                    type="date" 
+                                    id="date-input" 
+                                    value="${today}"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                >
+                                <p class="text-xs text-gray-400 mt-1">Select the date for this value</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Value:</label>
                                 <input 
                                     type="text" 
                                     id="value-input" 
@@ -372,18 +383,26 @@ class TrackerDashboard {
             document.body.insertAdjacentHTML('beforeend', modalHtml);
             
             const modal = document.getElementById('value-input-modal');
-            const input = document.getElementById('value-input');
+            const dateInput = document.getElementById('date-input');
+            const valueInput = document.getElementById('value-input');
             const saveBtn = document.getElementById('save-value-btn');
             const cancelBtn = document.getElementById('cancel-value-btn');
             
-            // Focus input
-            setTimeout(() => input.focus(), 100);
+            // Focus value input
+            setTimeout(() => valueInput.focus(), 100);
             
             // Handle save
             const handleSave = () => {
-                const value = input.value.trim();
+                const value = valueInput.value.trim();
+                const date = dateInput.value;
+                
+                if (!value) {
+                    valueInput.focus();
+                    return;
+                }
+                
                 this.removeModal(modal);
-                resolve(value);
+                resolve({ value, date });
             };
             
             // Handle cancel
@@ -396,11 +415,23 @@ class TrackerDashboard {
             saveBtn.addEventListener('click', handleSave);
             cancelBtn.addEventListener('click', handleCancel);
             
-            // Handle Enter key
-            input.addEventListener('keydown', (e) => {
+            // Handle Enter key on value input
+            valueInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     handleSave();
+                }
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancel();
+                }
+            });
+            
+            // Handle Enter key on date input
+            dateInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    valueInput.focus();
                 }
                 if (e.key === 'Escape') {
                     e.preventDefault();
@@ -569,11 +600,13 @@ class TrackerDashboard {
      * Submit tracker value to web endpoint (not API endpoint)
      * @param {string} trackerId - ID of the tracker
      * @param {string} value - Value to submit
+     * @param {string} date - Date in YYYY-MM-DD format (optional, defaults to today)
      * @returns {Promise<Object>} - Web response
      */
-    async submitTrackerValue(trackerId, value) {
+    async submitTrackerValue(trackerId, value, date = null) {
         try {
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+            // Use provided date or default to today
+            const submitDate = date || new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
             
             const response = await fetch(`${this.webBaseUrl}/tracker/${trackerId}/value`, {
                 method: 'POST',
@@ -582,7 +615,7 @@ class TrackerDashboard {
                     'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
-                    date: today,
+                    date: submitDate,
                     value: value
                 })
             });
@@ -611,15 +644,13 @@ class TrackerDashboard {
     }
     
     /**
-     * Fetch tracker data for charts from API endpoint
-     * Note: This uses API endpoint which requires authentication in production.
-     * If authentication fails, we gracefully handle it by showing a message.
+     * Fetch tracker data for charts from web endpoint (no authentication required)
      * @param {string} trackerId - ID of the tracker
      * @returns {Promise<Object>} - Tracker data
      */
     async fetchTrackerData(trackerId) {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/trackers/${trackerId}/values`, {
+            const response = await fetch(`${this.webBaseUrl}/tracker/${trackerId}/chart-data`, {
                 method: 'GET',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest'
@@ -628,26 +659,20 @@ class TrackerDashboard {
             
             const result = await response.json();
             
-            if (response.ok) {
+            if (response.ok && result.success) {
                 return {
                     success: true,
-                    values: result.values || []
-                };
-            } else if (response.status === 401) {
-                // Authentication required for chart data - this is expected in production
-                return {
-                    success: false,
-                    message: 'Chart data requires API authentication. Please contact administrator.',
-                    authRequired: true
+                    values: result.values || [],
+                    tracker: result.tracker
                 };
             } else {
                 return {
                     success: false,
-                    message: result.error || 'Failed to fetch data'
+                    message: result.error || 'Failed to fetch chart data'
                 };
             }
         } catch (error) {
-            console.error('API request failed:', error);
+            console.error('Web request failed:', error);
             return {
                 success: false,
                 message: 'Network error. Please check your connection.'
