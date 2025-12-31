@@ -242,6 +242,19 @@ class AuthLogger:
             },
         )
 
+    def log_security_event(self, event_type: str, message: str, user_ip: str):
+        """Log security-related events."""
+        self.logger.warning(
+            f"Security event [{event_type}]: {message}",
+            extra={
+                "event": "security_event",
+                "event_type": event_type,
+                "user_ip": user_ip,
+                "security_message": message,  # Changed from "message" to avoid conflict
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        )
+
     def log_network_error(self, endpoint: str, error: str, retry_count: int):
         """Log network errors and retry attempts."""
         self.logger.error(

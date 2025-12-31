@@ -11,6 +11,7 @@ Requirements: 2.1, 3.2, 6.3, 7.1, 7.2, 7.4, 8.1
 import os
 from functools import wraps
 from typing import Optional
+from urllib.parse import urlparse
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request
 
@@ -29,6 +30,118 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 # Global auth service instance (will be initialized by app factory)
 auth_service: Optional[GoogleAuthService] = None
+
+
+# Allowlist of safe redirect paths for preventing open redirect vulnerabilities
+ALLOWED_REDIRECT_PATHS = {
+    "/",
+    "/web/",
+    "/web/dashboard",
+    "/web/systems",
+    "/web/learn-more",
+    "/web/test",
+    "/auth/login",
+    "/health",
+    "/health/detailed",
+    "/health/ready",
+    "/health/live",
+}
+
+
+def validate_redirect_url(url: Optional[str]) -> str:
+    """
+    Validate and sanitize redirect URL to prevent open redirect vulnerabilities.
+
+    This function implements an allowlist approach to ensure redirects only go to
+    safe, application-controlled endpoints.
+
+    Args:
+        url: The URL to validate (can be None)
+
+    Returns:
+        str: A safe redirect URL (defaults to "/" if invalid)
+
+    Security:
+        - Only allows relative URLs (no external redirects)
+        - Uses allowlist of known safe paths
+        - Prevents open redirect attacks
+        - Logs suspicious redirect attempts
+    """
+    # Default safe redirect
+    default_redirect = "/"
+
+    if not url:
+        return default_redirect
+
+    try:
+        # Parse the URL
+        parsed = urlparse(url)
+
+        # Only allow relative URLs (no scheme, no netloc)
+        if parsed.scheme or parsed.netloc:
+            try:
+                client_ip = get_client_ip()
+            except RuntimeError:
+                # Outside request context (e.g., in tests)
+                client_ip = "unknown"
+
+            auth_logger.log_security_event(
+                "suspicious_redirect_attempt",
+                f"Attempted redirect to external URL: {url}",
+                client_ip,
+            )
+            return default_redirect
+
+        # Extract the path component
+        path = parsed.path or "/"
+
+        # Normalize path (remove trailing slash except for root)
+        # But first check if the original path with trailing slash is in allowlist
+        original_path = path
+        normalized_path = path.rstrip("/") if path != "/" else path
+
+        # Check both original and normalized paths against allowlist
+        if (
+            original_path in ALLOWED_REDIRECT_PATHS
+            or normalized_path in ALLOWED_REDIRECT_PATHS
+        ):
+            # Use the original path if it's in allowlist, otherwise use normalized
+            final_path = (
+                original_path
+                if original_path in ALLOWED_REDIRECT_PATHS
+                else normalized_path
+            )
+            # Include query parameters if they exist (they're generally safe for internal URLs)
+            if parsed.query:
+                return f"{final_path}?{parsed.query}"
+            return final_path
+        else:
+            try:
+                client_ip = get_client_ip()
+            except RuntimeError:
+                # Outside request context (e.g., in tests)
+                client_ip = "unknown"
+
+            auth_logger.log_security_event(
+                "blocked_redirect_attempt",
+                f"Blocked redirect to non-allowlisted path: {original_path} (normalized: {normalized_path})",
+                client_ip,
+            )
+            return default_redirect
+
+    except Exception as e:
+        try:
+            client_ip = get_client_ip()
+        except RuntimeError:
+            # Outside request context (e.g., in tests)
+            client_ip = "unknown"
+
+        auth_logger.log_security_event(
+            "redirect_validation_error",
+            f"Error validating redirect URL '{url}': {str(e)}",
+            client_ip,
+        )
+        return default_redirect
 
 
 def require_https(f):
@@ -187,7 +300,8 @@ def callback():
             # For web requests, show success message and redirect
             if request.accept_mimetypes.accept_html:
                 flash(f"Welcome, {auth_result.user_info.name}!", "success")
-                return redirect(auth_result.redirect_url or "/")
+                safe_redirect_url = validate_redirect_url(auth_result.redirect_url)
+                return redirect(safe_redirect_url)
             else:
                 return jsonify(
                     {
@@ -197,7 +311,7 @@ def callback():
                             "name": auth_result.user_info.name,
                             "google_id": auth_result.user_info.google_id,
                         },
-                        "redirect_url": auth_result.redirect_url,
+                        "redirect_url": validate_redirect_url(auth_result.redirect_url),
                     }
                 )
         else:
@@ -209,13 +323,18 @@ def callback():
             # For web requests, show error and redirect
             if request.accept_mimetypes.accept_html:
                 flash(auth_result.error_message, "error")
-                return redirect(auth_result.redirect_url or "/auth/login")
+                safe_redirect_url = (
+                    validate_redirect_url(auth_result.redirect_url)
+                    if auth_result.redirect_url
+                    else "/auth/login"
+                )
+                return redirect(safe_redirect_url)
             else:
                 return jsonify(
                     {
                         "success": False,
                         "error": auth_result.error_message,
-                        "redirect_url": auth_result.redirect_url,
+                        "redirect_url": validate_redirect_url(auth_result.redirect_url),
                     }
                 ), 400
 
@@ -288,13 +407,14 @@ def logout():
         if request.accept_mimetypes.accept_html:
             if not redirect_to_google:
                 flash("You have been logged out successfully.", "info")
-            return redirect(logout_redirect_url)
+            safe_logout_url = validate_redirect_url(logout_redirect_url)
+            return redirect(safe_logout_url)
         else:
             return jsonify(
                 {
                     "success": True,
                     "message": "Logged out successfully",
-                    "redirect_url": logout_redirect_url,
+                    "redirect_url": validate_redirect_url(logout_redirect_url),
                 }
             )
 
