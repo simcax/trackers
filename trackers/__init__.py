@@ -78,8 +78,69 @@ def create_app(test_config=None):
 
         from flask import send_from_directory
 
-        static_dir = os.path.join(app.root_path, "..", "static")
-        return send_from_directory(static_dir, filename)
+        # Try multiple possible static directory locations
+        possible_static_dirs = [
+            os.path.join(app.root_path, "..", "static"),  # Relative to trackers package
+            os.path.join(os.getcwd(), "static"),  # Relative to working directory
+            "static",  # Direct path
+        ]
+
+        for static_dir in possible_static_dirs:
+            if os.path.exists(static_dir):
+                try:
+                    return send_from_directory(static_dir, filename)
+                except Exception as e:
+                    app.logger.warning(
+                        f"Failed to serve {filename} from {static_dir}: {e}"
+                    )
+                    continue
+
+        # If we get here, the file wasn't found in any location
+        app.logger.error(f"Static file not found: {filename}")
+        app.logger.error(f"Tried directories: {possible_static_dirs}")
+        app.logger.error(f"Current working directory: {os.getcwd()}")
+        app.logger.error(f"App root path: {app.root_path}")
+
+        from flask import abort
+
+        abort(404)
+
+    # Debug route to help troubleshoot static file issues in production
+    @app.route("/debug/static-info")
+    def debug_static_info():
+        """
+        Debug route to show static file configuration and directory information.
+        This helps troubleshoot static file serving issues in production.
+        """
+        import os
+
+        from flask import jsonify
+
+        info = {
+            "app_root_path": app.root_path,
+            "current_working_directory": os.getcwd(),
+            "static_folder": app.static_folder,
+            "static_url_path": app.static_url_path,
+            "possible_static_dirs": [
+                os.path.join(app.root_path, "..", "static"),
+                os.path.join(os.getcwd(), "static"),
+                "static",
+            ],
+            "directory_exists": {},
+            "directory_contents": {},
+        }
+
+        # Check which directories exist and their contents
+        for static_dir in info["possible_static_dirs"]:
+            info["directory_exists"][static_dir] = os.path.exists(static_dir)
+            if os.path.exists(static_dir):
+                try:
+                    contents = os.listdir(static_dir)
+                    info["directory_contents"][static_dir] = contents
+                except Exception as e:
+                    info["directory_contents"][static_dir] = f"Error: {e}"
+
+        return jsonify(info)
 
     # Root route redirects to the web dashboard (main user interface)
     @app.route("/")
