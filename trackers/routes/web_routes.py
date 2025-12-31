@@ -307,6 +307,73 @@ def dashboard():
         return render_template("test.html")
 
 
+@web_bp.route("/debug")
+@optional_auth()
+def debug_dashboard():
+    """
+    Debug route to help diagnose authentication and template issues.
+    """
+    try:
+        # Get authentication context
+        current_user = get_current_user()
+        authenticated = is_authenticated()
+
+        # Get current database user
+        from trackers.services.user_service import UserService
+
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Get current database user for filtering
+            user_service = UserService(db)
+            database_user = user_service.get_current_user_from_session()
+
+            if not database_user and current_user:
+                try:
+                    database_user = user_service.create_or_update_user(current_user)
+                    db.commit()
+                except Exception as e:
+                    print(f"Error creating database user: {e}")
+                    db.rollback()
+
+            # Fetch user's trackers only
+            if database_user:
+                trackers = get_all_trackers(db, user_id=database_user.id)
+            else:
+                trackers = []
+
+            # Format trackers for display with recent values
+            display_data = []
+            for tracker in trackers:
+                # Get recent values for this tracker (last 10 for trend calculation)
+                recent_values = get_tracker_values(db, tracker.id)[:10]
+                formatted_tracker = format_tracker_for_display(tracker, recent_values)
+                display_data.append(formatted_tracker)
+
+            # Pass authentication context and database user to template
+            return render_template(
+                "debug_dashboard.html",
+                trackers=display_data,
+                current_user=current_user,
+                database_user=database_user,
+                is_authenticated=authenticated,
+            )
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        # Show error information
+        return render_template(
+            "debug_dashboard.html",
+            trackers=[],
+            current_user=None,
+            database_user=None,
+            is_authenticated=False,
+            error=str(e),
+        )
+
+
 @web_bp.route("/tracker/create", methods=["POST"])
 @require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=True)
 def create_tracker_web():
