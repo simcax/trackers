@@ -40,6 +40,9 @@
                     <span>Create New Tracker</span>
                 </button>
                 <div id="create-tracker-help" class="sr-only">Opens a form to create a new tracker for monitoring your progress</div>
+                {% if current_user %}
+                    So apparently is_authenticated is true. {{ current_user }}
+                {% endif %}
                 {% endif %}
             </div>
             
