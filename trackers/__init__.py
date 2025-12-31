@@ -64,6 +64,23 @@ def create_app(test_config=None):
     # register web UI blueprint
     app.register_blueprint(web_bp)
 
+    # Add explicit static file serving for production environments
+    # This ensures static files work on platforms like Clever Cloud
+    @app.route("/static/<path:filename>")
+    def static_files(filename):
+        """
+        Explicit static file serving for production environments.
+
+        This route ensures static files are properly served on platforms
+        like Clever Cloud where the default Flask static serving might not work.
+        """
+        import os
+
+        from flask import send_from_directory
+
+        static_dir = os.path.join(app.root_path, "..", "static")
+        return send_from_directory(static_dir, filename)
+
     # Root route redirects to the web dashboard (main user interface)
     @app.route("/")
     def index():

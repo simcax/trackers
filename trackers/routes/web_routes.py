@@ -32,13 +32,13 @@ from trackers.db import database as db_module
 from trackers.db.tracker_values_db import get_tracker_values
 from trackers.db.trackerdb import create_tracker, get_all_trackers
 
-# Create web blueprint with template and static folder configuration
+# Create web blueprint with template folder configuration
+# Static files are handled by the main Flask app, not the blueprint
 web_bp = Blueprint(
     "web",
     __name__,
     url_prefix="/web",
     template_folder="../../templates",
-    static_folder="../../static",
 )
 
 
