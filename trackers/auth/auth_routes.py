@@ -85,10 +85,10 @@ def validate_redirect_url(url: Optional[str]) -> str:
                 # Outside request context (e.g., in tests)
                 client_ip = "unknown"
 
-            auth_logger.log_security_event(
-                "suspicious_redirect_attempt",
-                f"Attempted redirect to external URL: {url}",
+            auth_logger.log_authentication_failure(
                 client_ip,
+                f"Attempted redirect to external URL: {url}",
+                "suspicious_redirect_attempt",
             )
             return default_redirect
 
@@ -122,10 +122,10 @@ def validate_redirect_url(url: Optional[str]) -> str:
                 # Outside request context (e.g., in tests)
                 client_ip = "unknown"
 
-            auth_logger.log_security_event(
-                "blocked_redirect_attempt",
-                f"Blocked redirect to non-allowlisted path: {original_path} (normalized: {normalized_path})",
+            auth_logger.log_authentication_failure(
                 client_ip,
+                f"Blocked redirect to non-allowlisted path: {original_path} (normalized: {normalized_path})",
+                "blocked_redirect_attempt",
             )
             return default_redirect
 
@@ -136,10 +136,10 @@ def validate_redirect_url(url: Optional[str]) -> str:
             # Outside request context (e.g., in tests)
             client_ip = "unknown"
 
-        auth_logger.log_security_event(
-            "redirect_validation_error",
-            f"Error validating redirect URL '{url}': {str(e)}",
+        auth_logger.log_authentication_failure(
             client_ip,
+            f"Error validating redirect URL '{url}': {str(e)}",
+            "redirect_validation_error",
         )
         return default_redirect
 
@@ -170,7 +170,9 @@ def require_https(f):
             # Redirect to HTTPS version
             if request.method == "GET":
                 https_url = request.url.replace("http://", "https://", 1)
-                return redirect(https_url, code=301)
+                # Validate the HTTPS URL to prevent open redirects
+                safe_https_url = validate_redirect_url(https_url)
+                return redirect(safe_https_url, code=301)
             else:
                 # For non-GET requests, return error
                 error_msg = "HTTPS is required for OAuth authentication in production"
@@ -228,7 +230,9 @@ def login():
 
         auth_logger.log_oauth_initiation(client_ip, redirect_after_login)
 
-        return redirect(auth_redirect.url)
+        # Validate redirect URL to prevent open redirects
+        safe_redirect_url = validate_redirect_url(auth_redirect.url)
+        return redirect(safe_redirect_url)
 
     except RateLimitError as e:
         auth_logger.log_rate_limit_violation(

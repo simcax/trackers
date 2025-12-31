@@ -1118,14 +1118,23 @@ class TrackerDashboard {
         const toast = document.createElement('div');
         toast.id = 'temp-toast';
         toast.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 ${bgColor} ${textColor}`;
-        toast.innerHTML = `
-            <div class="flex items-center space-x-2">
-                <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    ${icon}
-                </svg>
-                <span>${message}</span>
-            </div>
-        `;
+        
+        // Create content safely to prevent XSS
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'flex items-center space-x-2';
+        
+        const iconSvg = document.createElement('svg');
+        iconSvg.className = 'w-5 h-5 flex-shrink-0';
+        iconSvg.setAttribute('fill', 'currentColor');
+        iconSvg.setAttribute('viewBox', '0 0 20 20');
+        iconSvg.innerHTML = icon; // Icon is safe, controlled content
+        
+        const messageSpan = document.createElement('span');
+        messageSpan.textContent = message; // Use textContent to prevent XSS
+        
+        contentDiv.appendChild(iconSvg);
+        contentDiv.appendChild(messageSpan);
+        toast.appendChild(contentDiv);
         
         // Add to page
         document.body.appendChild(toast);

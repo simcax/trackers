@@ -59,10 +59,11 @@ class TestRedirectSecurity:
             with patch("trackers.auth.auth_routes.auth_logger") as mock_logger:
                 result = validate_redirect_url(url)
                 assert result == "/", f"External URL {url} should be blocked"
-                mock_logger.log_security_event.assert_called_once()
-                args = mock_logger.log_security_event.call_args[0]
-                assert args[0] == "suspicious_redirect_attempt"
+                mock_logger.log_authentication_failure.assert_called_once()
+                args = mock_logger.log_authentication_failure.call_args[0]
+                assert args[0] == "unknown"  # client_ip when outside request context
                 assert url in args[1]
+                assert args[2] == "suspicious_redirect_attempt"
 
     def test_validate_redirect_url_blocks_non_allowlisted_paths(self):
         """Test that non-allowlisted internal paths are blocked."""
@@ -78,10 +79,11 @@ class TestRedirectSecurity:
             with patch("trackers.auth.auth_routes.auth_logger") as mock_logger:
                 result = validate_redirect_url(path)
                 assert result == "/", f"Non-allowlisted path {path} should be blocked"
-                mock_logger.log_security_event.assert_called_once()
-                args = mock_logger.log_security_event.call_args[0]
-                assert args[0] == "blocked_redirect_attempt"
+                mock_logger.log_authentication_failure.assert_called_once()
+                args = mock_logger.log_authentication_failure.call_args[0]
+                assert args[0] == "unknown"  # client_ip when outside request context
                 assert path in args[1]
+                assert args[2] == "blocked_redirect_attempt"
 
     def test_validate_redirect_url_handles_malformed_urls(self):
         """Test that malformed URLs are handled gracefully."""
@@ -98,7 +100,7 @@ class TestRedirectSecurity:
                 result = validate_redirect_url(url)
                 assert result == "/", f"Malformed URL {url} should be blocked"
                 # Should log either suspicious_redirect_attempt or redirect_validation_error
-                mock_logger.log_security_event.assert_called_once()
+                mock_logger.log_authentication_failure.assert_called_once()
 
     def test_validate_redirect_url_handles_exceptions(self):
         """Test that exceptions during URL parsing are handled."""
@@ -180,11 +182,10 @@ class TestRedirectSecurity:
             ):
                 validate_redirect_url("http://evil.com")
 
-                mock_logger.log_security_event.assert_called_once()
-                args = mock_logger.log_security_event.call_args[0]
-                # Third argument should be the client IP
-                assert len(args) >= 3
-                assert args[2] == "192.168.1.100"
+                mock_logger.log_authentication_failure.assert_called_once()
+                args = mock_logger.log_authentication_failure.call_args[0]
+                # First argument should be the client IP
+                assert args[0] == "192.168.1.100"
 
 
 class TestRedirectSecurityIntegration:
