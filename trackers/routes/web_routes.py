@@ -14,7 +14,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from sqlalchemy.exc import IntegrityError
 
 from trackers.auth.admin import get_admin_status_info
@@ -219,14 +226,13 @@ def format_tracker_for_display(
 
 
 @web_bp.route("/")
-@optional_auth()
 def dashboard():
     """
     Main dashboard view for the web interface.
 
     Fetches user's trackers and their recent values, then displays them
-    in a card-based layout with dark theme styling. Now requires authentication
-    and shows only the authenticated user's trackers.
+    in a card-based layout with dark theme styling. Uses Google OAuth
+    authentication only (API keys are for API endpoints only).
 
     Returns:
         Rendered dashboard template with user's tracker data
@@ -234,9 +240,8 @@ def dashboard():
     Validates: Requirements 6.5, 8.1
     """
     try:
-        # Get authentication context
-        current_user = get_current_user()
-        authenticated = is_authenticated()
+        # Authentication context is provided by the template context processor
+        # which only considers Google OAuth for web authentication
 
         # Get current database user
         from trackers.services.user_service import UserService
@@ -248,22 +253,35 @@ def dashboard():
             user_service = UserService(db)
             database_user = user_service.get_current_user_from_session()
 
+            # Only create database users for Google OAuth users
             if not database_user:
-                # If no database user found, try to create one from OAuth info
-                if current_user:
-                    try:
-                        database_user = user_service.create_or_update_user(current_user)
-                        db.commit()
-                    except Exception as e:
-                        print(f"Error creating database user: {e}")
-                        db.rollback()
-                        return render_template(
-                            "dashboard.html",
-                            trackers=[],
-                            current_user=current_user,
-                            is_authenticated=authenticated,
-                            error="Unable to access user data",
+                # Check if we have Google OAuth user info
+                try:
+                    from trackers.auth.decorators import (
+                        _check_google_oauth_auth,
+                        _has_google_auth_configured,
+                    )
+
+                    if _has_google_auth_configured():
+                        google_oauth_valid, google_user_info = (
+                            _check_google_oauth_auth()
                         )
+                        if google_oauth_valid and google_user_info:
+                            try:
+                                database_user = user_service.create_or_update_user(
+                                    google_user_info
+                                )
+                                db.commit()
+                            except Exception as e:
+                                print(f"Error creating database user: {e}")
+                                db.rollback()
+                                return render_template(
+                                    "dashboard.html",
+                                    trackers=[],
+                                    error="Unable to access user data",
+                                )
+                except Exception as e:
+                    print(f"Error checking Google OAuth: {e}")
 
             # Fetch user's trackers only
             if database_user:
@@ -279,13 +297,11 @@ def dashboard():
                 formatted_tracker = format_tracker_for_display(tracker, recent_values)
                 display_data.append(formatted_tracker)
 
-            # Pass authentication context and database user to template
+            # Template context processor now handles authentication context
             return render_template(
                 "dashboard.html",
                 trackers=display_data,
-                current_user=current_user,
                 database_user=database_user,
-                is_authenticated=authenticated,
             )
 
         except Exception as e:
@@ -294,8 +310,6 @@ def dashboard():
             return render_template(
                 "dashboard.html",
                 trackers=[],
-                current_user=current_user,
-                is_authenticated=authenticated,
                 error="Unable to load tracker data",
             )
         finally:
@@ -305,73 +319,6 @@ def dashboard():
         # Fallback to test page if dashboard fails
         print(f"Dashboard error: {e}")
         return render_template("test.html")
-
-
-@web_bp.route("/debug")
-@optional_auth()
-def debug_dashboard():
-    """
-    Debug route to help diagnose authentication and template issues.
-    """
-    try:
-        # Get authentication context
-        current_user = get_current_user()
-        authenticated = is_authenticated()
-
-        # Get current database user
-        from trackers.services.user_service import UserService
-
-        # Get database session
-        db = db_module.SessionLocal()
-        try:
-            # Get current database user for filtering
-            user_service = UserService(db)
-            database_user = user_service.get_current_user_from_session()
-
-            if not database_user and current_user:
-                try:
-                    database_user = user_service.create_or_update_user(current_user)
-                    db.commit()
-                except Exception as e:
-                    print(f"Error creating database user: {e}")
-                    db.rollback()
-
-            # Fetch user's trackers only
-            if database_user:
-                trackers = get_all_trackers(db, user_id=database_user.id)
-            else:
-                trackers = []
-
-            # Format trackers for display with recent values
-            display_data = []
-            for tracker in trackers:
-                # Get recent values for this tracker (last 10 for trend calculation)
-                recent_values = get_tracker_values(db, tracker.id)[:10]
-                formatted_tracker = format_tracker_for_display(tracker, recent_values)
-                display_data.append(formatted_tracker)
-
-            # Pass authentication context and database user to template
-            return render_template(
-                "debug_dashboard.html",
-                trackers=display_data,
-                current_user=current_user,
-                database_user=database_user,
-                is_authenticated=authenticated,
-            )
-
-        finally:
-            db.close()
-
-    except Exception as e:
-        # Show error information
-        return render_template(
-            "debug_dashboard.html",
-            trackers=[],
-            current_user=None,
-            database_user=None,
-            is_authenticated=False,
-            error=str(e),
-        )
 
 
 @web_bp.route("/tracker/create", methods=["POST"])

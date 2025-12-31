@@ -247,12 +247,42 @@ def configure_user_context(app):
 
                 admin_functions_available = False
 
+            # For web interface, only consider Google OAuth authentication
+            # API keys should only be used for API endpoints, not web pages
+            try:
+                from trackers.auth.decorators import (
+                    _check_google_oauth_auth,
+                    _has_google_auth_configured,
+                )
+
+                current_user = None
+                is_web_authenticated = False
+                auth_method = None
+                has_google_oauth = False
+
+                if _has_google_auth_configured():
+                    google_oauth_valid, google_user_info = _check_google_oauth_auth()
+                    if google_oauth_valid and google_user_info:
+                        current_user = google_user_info
+                        is_web_authenticated = True
+                        auth_method = "google_oauth"
+                        has_google_oauth = True
+
+            except Exception as e:
+                logger.error(
+                    f"Error checking Google OAuth in context processor: {str(e)}"
+                )
+                current_user = None
+                is_web_authenticated = False
+                auth_method = None
+                has_google_oauth = False
+
             return {
-                "current_user": UserContextManager.get_current_user(),
-                "is_authenticated": UserContextManager.is_authenticated(),
-                "auth_method": UserContextManager.get_auth_method(),
-                "has_api_key_auth": UserContextManager.has_api_key_auth(),
-                "has_google_oauth": UserContextManager.has_google_oauth(),
+                "current_user": current_user,
+                "is_authenticated": is_web_authenticated,
+                "auth_method": auth_method,
+                "has_api_key_auth": False,  # Never show API key auth status in web UI
+                "has_google_oauth": has_google_oauth,
                 # Image utility functions
                 "get_proxied_image_url": get_proxied_image_url,
                 "get_avatar_initials": get_avatar_initials,

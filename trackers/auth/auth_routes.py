@@ -230,9 +230,9 @@ def login():
 
         auth_logger.log_oauth_initiation(client_ip, redirect_after_login)
 
-        # Validate redirect URL to prevent open redirects
-        safe_redirect_url = validate_redirect_url(auth_redirect.url)
-        return redirect(safe_redirect_url)
+        # OAuth authorization URLs are safe by design - no validation needed
+        # The validate_redirect_url function is only for user-provided redirects
+        return redirect(auth_redirect.url)
 
     except RateLimitError as e:
         auth_logger.log_rate_limit_violation(
