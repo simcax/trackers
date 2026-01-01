@@ -4,6 +4,7 @@ from flask import Flask
 
 from trackers.error_handling import register_error_handlers
 from trackers.routes.health_routes import health_bp
+from trackers.routes.profile_routes import profile_bp
 from trackers.routes.tracker_routes import tracker_bp
 from trackers.routes.tracker_value_routes import tracker_value_bp
 from trackers.routes.web_routes import web_bp
@@ -63,6 +64,9 @@ def create_app(test_config=None):
 
     # register web UI blueprint
     app.register_blueprint(web_bp)
+
+    # register profile blueprint
+    app.register_blueprint(profile_bp)
 
     # Add explicit static file serving for production environments
     # This ensures static files work on platforms like Clever Cloud
@@ -258,8 +262,26 @@ def _initialize_security_system(app):
     try:
         app.logger.info("Initializing API key security system...")
 
+        # Initialize API key service for user key validation
+        api_key_service = None
+        try:
+            from trackers.db.database import SessionLocal
+            from trackers.services.api_key_service import APIKeyService
+
+            # Create a database session for the API key service
+            db_session = SessionLocal()
+            api_key_service = APIKeyService(db_session)
+
+            # Store the service in the app for later use
+            app.api_key_service = api_key_service
+            app.logger.info("✓ API key service initialized for user key validation")
+
+        except Exception as e:
+            app.logger.warning(f"Failed to initialize API key service: {e}")
+            app.logger.info("User API key validation will not be available")
+
         # Initialize security system using the existing init_security function
-        security_config = init_security(app)
+        security_config = init_security(app, api_key_service)
 
         # Validate security system components are properly initialized
         if not hasattr(app, "security_config"):
@@ -369,6 +391,7 @@ def _run_migration(app):
         # This must happen before migration runs (Requirements: 2.1, 2.2, 2.3)
         from trackers.db.database import Base, engine
         from trackers.db.migration import MigrationEngine
+        from trackers.models.api_key_model import APIKeyModel
         from trackers.models.tracker_model import ItemModel, LogModel, TrackerModel
         from trackers.models.tracker_value_model import TrackerValueModel
         from trackers.models.user_model import UserModel  # Import UserModel

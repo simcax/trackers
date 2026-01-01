@@ -396,18 +396,33 @@ class SecurityConfig:
 class KeyValidator:
     """Validates API keys against configured valid keys and handles key management logic."""
 
-    def __init__(self, config: SecurityConfig):
+    def __init__(self, config: SecurityConfig, api_key_service=None):
         self.config = config
+        self.api_key_service = api_key_service
 
     def is_valid_key(self, api_key: str) -> bool:
         """
         Validate provided key against valid key list with constant-time comparison.
 
+        Supports both environment keys and user-created keys with uk_ prefix.
         Automatically reloads keys if rotation is enabled and interval has passed.
         """
         if not api_key:
             return False
 
+        # Check user-created keys first (uk_ prefix)
+        if api_key.startswith("uk_") and self.api_key_service:
+            try:
+                validation_result = self.api_key_service.validate_user_api_key(api_key)
+                return validation_result is not None and validation_result.is_valid
+            except Exception as e:
+                # Log error but continue to environment key validation
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error validating user API key: {str(e)}")
+
+        # Check environment keys (existing behavior)
         # Reload keys if needed (for key rotation support)
         self.config.reload_keys_if_needed()
 
@@ -928,7 +943,7 @@ class ProductionSecurityEnforcer:
             self.logger.info(f"SECURITY_METRICS: {metrics}")
 
 
-def init_security(app):
+def init_security(app, api_key_service=None):
     """Initialize security system during Flask application creation with production support."""
     # Initialize production configuration
     prod_config = ProductionConfig.from_environment()
@@ -936,7 +951,7 @@ def init_security(app):
     # Initialize security configuration with production enhancements
     security_config = SecurityConfig()
     app.security_config = security_config  # Store config for route protection checks
-    app.key_validator = KeyValidator(security_config)
+    app.key_validator = KeyValidator(security_config, api_key_service)
     app.security_logger = SecurityLogger(app.logger)
 
     # Initialize production security enforcer

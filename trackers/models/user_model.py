@@ -48,6 +48,9 @@ class UserModel(Base):
     trackers = relationship(
         "TrackerModel", back_populates="user", cascade="all, delete-orphan"
     )
+    api_keys = relationship(
+        "APIKeyModel", back_populates="user", cascade="all, delete-orphan"
+    )
 
     # Indexes for performance
     __table_args__ = (

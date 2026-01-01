@@ -186,6 +186,88 @@ class TestKeyValidator:
             assert validator._constant_time_compare("", "") is True
             assert validator._constant_time_compare("test", "") is False
 
+    def test_user_key_validation_with_api_service(self):
+        """Test validation of user-created API keys through API key service."""
+        from trackers.services.api_key_service import APIKeyValidationResult
+
+        # Create mock API key service
+        mock_api_service = Mock()
+
+        # Set up mock to return valid result for uk_ prefixed keys
+        mock_validation_result = APIKeyValidationResult(
+            is_valid=True, user_id=123, key_info=None, validation_error=None
+        )
+        mock_api_service.validate_user_api_key.return_value = mock_validation_result
+
+        with patch.dict(os.environ, {"API_KEYS": "env-key-1234567890123456"}):
+            config = SecurityConfig()
+            validator = KeyValidator(config, mock_api_service)
+
+            # Test environment key validation (should work as before)
+            assert validator.is_valid_key("env-key-1234567890123456") is True
+
+            # Test user key validation (should use API key service)
+            assert (
+                validator.is_valid_key("uk_test123456789012345678901234567890") is True
+            )
+
+            # Verify the API key service was called for user keys
+            mock_api_service.validate_user_api_key.assert_called_with(
+                "uk_test123456789012345678901234567890"
+            )
+
+    def test_user_key_validation_invalid_key(self):
+        """Test validation of invalid user-created API keys."""
+        from trackers.services.api_key_service import APIKeyValidationResult
+
+        # Create mock API key service
+        mock_api_service = Mock()
+
+        # Set up mock to return invalid result
+        mock_validation_result = APIKeyValidationResult(
+            is_valid=False, user_id=None, key_info=None, validation_error="Invalid key"
+        )
+        mock_api_service.validate_user_api_key.return_value = mock_validation_result
+
+        with patch.dict(os.environ, {"API_KEYS": "env-key-1234567890123456"}):
+            config = SecurityConfig()
+            validator = KeyValidator(config, mock_api_service)
+
+            # Test invalid user key
+            assert validator.is_valid_key("uk_invalid_key") is False
+
+    def test_user_key_validation_without_api_service(self):
+        """Test that user keys fail gracefully when no API service is provided."""
+        with patch.dict(os.environ, {"API_KEYS": "env-key-1234567890123456"}):
+            config = SecurityConfig()
+            validator = KeyValidator(config, None)  # No API service
+
+            # Test environment key validation (should work as before)
+            assert validator.is_valid_key("env-key-1234567890123456") is True
+
+            # Test user key validation (should fail gracefully)
+            assert (
+                validator.is_valid_key("uk_test123456789012345678901234567890") is False
+            )
+
+    def test_user_key_validation_api_service_exception(self):
+        """Test that API service exceptions are handled gracefully."""
+        # Create mock API key service that raises an exception
+        mock_api_service = Mock()
+        mock_api_service.validate_user_api_key.side_effect = Exception("Database error")
+
+        with patch.dict(os.environ, {"API_KEYS": "env-key-1234567890123456"}):
+            config = SecurityConfig()
+            validator = KeyValidator(config, mock_api_service)
+
+            # Test that exception is caught and key is treated as invalid
+            assert (
+                validator.is_valid_key("uk_test123456789012345678901234567890") is False
+            )
+
+            # Environment keys should still work
+            assert validator.is_valid_key("env-key-1234567890123456") is True
+
 
 class TestSecurityLogger:
     """Test SecurityLogger class functionality."""
