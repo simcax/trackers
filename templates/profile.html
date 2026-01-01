@@ -489,7 +489,8 @@ async function performInvalidation(keyId) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-            }
+            },
+            credentials: 'same-origin'  // Include session cookies for authentication
         });
         
         if (response.ok) {
@@ -534,6 +535,7 @@ document.getElementById('createKeyForm').addEventListener('submit', async functi
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'same-origin',  // Include session cookies for authentication
             body: JSON.stringify(data)
         });
         
