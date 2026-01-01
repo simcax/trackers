@@ -100,7 +100,7 @@ yarn.lock
 # =============================================================================
 # CSS/SCSS compiled files
 # =============================================================================
-static/css/dist/
+# Keep static/css/dist/ for production deployment
 static/css/build/
 *.css.map
 .sass-cache/
@@ -180,10 +180,7 @@ docker-compose.override.yml
 # Flask instance folder
 instance/
 
-# Compiled TailwindCSS output (should be regenerated)
-static/css/dist/output.css
-
-# Test files that shouldn't be committed
+# Test files that shouldn't be committed (but keep CSS output for production)
 static/test-*.html
 
 # Migration backup files

@@ -123,13 +123,21 @@ def require_auth(
         @wraps(f)
         def decorated_function(*args, **kwargs):
             try:
-                # Check if API key authentication is disabled - if so, allow public access
-                if (
+                # Initialize authentication context
+                auth_context = AuthenticationContext()
+
+                # Check if both authentication methods are disabled - only then allow public access
+                api_key_enabled = (
                     allow_api_key
                     and hasattr(current_app, "key_validator")
-                    and not current_app.key_validator.is_authentication_enabled()
-                ):
-                    # API key authentication is disabled, allow public access
+                    and current_app.key_validator.is_authentication_enabled()
+                )
+                google_oauth_enabled = (
+                    allow_google_oauth and _has_google_auth_configured()
+                )
+
+                if not api_key_enabled and not google_oauth_enabled:
+                    # Both authentication methods are disabled, allow public access
                     auth_context = AuthenticationContext(
                         is_authenticated=False,
                         auth_method="public",
@@ -140,27 +148,26 @@ def require_auth(
                     client_ip = get_client_ip()
                     logger.info(
                         f"Public access to {request.endpoint} from {client_ip} "
-                        "(API key authentication disabled)"
+                        "(all authentication methods disabled)"
                     )
 
                     return f(*args, **kwargs)
 
-                # Initialize authentication context
-                auth_context = AuthenticationContext()
-
                 # Check API key authentication if enabled
                 api_key_valid = False
-                if allow_api_key and _has_api_key_auth_configured():
-                    api_key_valid = _check_api_key_auth()
+                api_key_user_info = None
+                if api_key_enabled:
+                    api_key_valid, api_key_user_info = _check_api_key_auth()
 
                 # Check Google OAuth authentication if enabled
                 google_oauth_valid = False
                 google_user_info = None
-                if allow_google_oauth and _has_google_auth_configured():
+                if google_oauth_enabled:
                     google_oauth_valid, google_user_info = _check_google_oauth_auth()
 
                 # Determine authentication status and method
                 if api_key_valid and google_oauth_valid:
+                    # Both methods authenticated - prefer Google OAuth user info
                     auth_context = AuthenticationContext(
                         is_authenticated=True,
                         auth_method="both",
@@ -168,11 +175,34 @@ def require_auth(
                         api_key_valid=True,
                     )
                 elif api_key_valid:
-                    auth_context = AuthenticationContext(
-                        is_authenticated=True,
-                        auth_method="api_key",
-                        api_key_valid=True,
-                    )
+                    # Only API key authenticated
+                    if (
+                        api_key_user_info
+                        and api_key_user_info.get("auth_method") == "api_key"
+                    ):
+                        # User API key - create UserInfo object for compatibility
+                        from .token_validator import UserInfo
+
+                        user_info = UserInfo(
+                            email=api_key_user_info.get("email", ""),
+                            name=api_key_user_info.get("name", "API User"),
+                            google_id=api_key_user_info.get("google_id", ""),
+                            picture_url="",
+                            verified_email=True,
+                        )
+                        auth_context = AuthenticationContext(
+                            is_authenticated=True,
+                            auth_method="api_key",
+                            user_info=user_info,
+                            api_key_valid=True,
+                        )
+                    else:
+                        # Environment API key - system access
+                        auth_context = AuthenticationContext(
+                            is_authenticated=True,
+                            auth_method="api_key",
+                            api_key_valid=True,
+                        )
                 elif google_oauth_valid:
                     auth_context = AuthenticationContext(
                         is_authenticated=True,
@@ -259,8 +289,9 @@ def optional_auth() -> callable:
 
                 # Check API key authentication if configured
                 api_key_valid = False
+                api_key_user_info = None
                 if _has_api_key_auth_configured():
-                    api_key_valid = _check_api_key_auth()
+                    api_key_valid, api_key_user_info = _check_api_key_auth()
 
                 # Check Google OAuth authentication if configured
                 google_oauth_valid = False
@@ -277,11 +308,32 @@ def optional_auth() -> callable:
                         api_key_valid=True,
                     )
                 elif api_key_valid:
-                    auth_context = AuthenticationContext(
-                        is_authenticated=True,
-                        auth_method="api_key",
-                        api_key_valid=True,
-                    )
+                    if (
+                        api_key_user_info
+                        and api_key_user_info.get("auth_method") == "api_key"
+                    ):
+                        # User API key - create UserInfo object for compatibility
+                        from .token_validator import UserInfo
+
+                        user_info = UserInfo(
+                            email=api_key_user_info.get("email", ""),
+                            name=api_key_user_info.get("name", "API User"),
+                            google_id=api_key_user_info.get("google_id", ""),
+                            picture_url="",
+                            verified_email=True,
+                        )
+                        auth_context = AuthenticationContext(
+                            is_authenticated=True,
+                            auth_method="api_key",
+                            user_info=user_info,
+                            api_key_valid=True,
+                        )
+                    else:
+                        auth_context = AuthenticationContext(
+                            is_authenticated=True,
+                            auth_method="api_key",
+                            api_key_valid=True,
+                        )
                 elif google_oauth_valid:
                     auth_context = AuthenticationContext(
                         is_authenticated=True,
@@ -309,8 +361,9 @@ def optional_auth() -> callable:
 def _has_api_key_auth_configured() -> bool:
     """Check if API key authentication is configured and enabled."""
     return (
-        hasattr(current_app, "key_validator")
-        and current_app.key_validator.is_authentication_enabled()
+        hasattr(current_app, "security_config")
+        and hasattr(current_app.security_config, "api_keys")
+        and len(current_app.security_config.api_keys) > 0
     )
 
 
@@ -324,22 +377,23 @@ def _has_google_auth_configured() -> bool:
         return False
 
 
-def _check_api_key_auth() -> bool:
+def _check_api_key_auth() -> tuple[bool, Optional[dict]]:
     """
     Check API key authentication for the current request.
 
     Returns:
-        bool: True if API key is valid, False otherwise
+        tuple: (is_authenticated, user_info_dict) where user_info_dict contains
+               user information for user API keys, None for environment keys
     """
     try:
         # Check if this route is protected by API key system
         if not hasattr(current_app, "security_config"):
-            return False
+            return False, None
 
         current_route = request.path
         if not current_app.security_config.is_route_protected(current_route):
             # Route is public for API key system, consider it valid
-            return True
+            return True, None
 
         # Extract and validate Authorization header
         from trackers.security.api_key_auth import validate_authorization_header
@@ -348,14 +402,55 @@ def _check_api_key_auth() -> bool:
         is_valid, api_key, error_message = validate_authorization_header(auth_header)
 
         if not is_valid:
-            return False
+            return False, None
 
-        # Validate API key against configured keys
-        return current_app.key_validator.is_valid_key(api_key)
+        # Check if this is a user API key (starts with uk_)
+        if api_key.startswith("uk_") and hasattr(current_app, "api_key_service"):
+            try:
+                # Validate user API key and get user information
+                validation_result = current_app.api_key_service.validate_user_api_key(
+                    api_key
+                )
+                if validation_result and validation_result.is_valid:
+                    # Get user information from database
+                    from trackers.db.database import SessionLocal
+                    from trackers.services.user_service import UserService
+
+                    db = SessionLocal()
+                    try:
+                        user_service = UserService(db)
+                        user = user_service.get_user_by_id(validation_result.user_id)
+                        if user:
+                            # Return user information in a format compatible with Google OAuth
+                            user_info = {
+                                "user_id": user.id,
+                                "email": user.email,
+                                "name": user.name,
+                                "google_id": user.google_user_id,
+                                "auth_method": "api_key",
+                            }
+                            return True, user_info
+                    finally:
+                        db.close()
+
+                return False, None
+            except Exception as e:
+                logger.error(f"Error validating user API key: {str(e)}")
+                return False, None
+        else:
+            # Environment API key - validate against configured keys
+            is_valid = current_app.key_validator.is_valid_key(api_key)
+            if is_valid:
+                # For environment keys, return a system user context
+                return True, {
+                    "auth_method": "environment_api_key",
+                    "system_access": True,
+                }
+            return False, None
 
     except Exception as e:
         logger.error(f"Error checking API key authentication: {str(e)}")
-        return False
+        return False, None
 
 
 def _check_google_oauth_auth() -> tuple[bool, Optional[UserInfo]]:

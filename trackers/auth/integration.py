@@ -66,10 +66,23 @@ class UnifiedAuthSystem:
 
     def _detect_auth_methods(self) -> None:
         """Detect which authentication methods are configured and available."""
-        # Check API key authentication
+        # Check API key authentication - consider it enabled if we have API keys configured
+        # regardless of development mode settings
+        has_security_config = hasattr(self.app, "security_config")
+        has_api_keys_attr = has_security_config and hasattr(
+            self.app.security_config, "api_keys"
+        )
+        api_keys_count = (
+            len(self.app.security_config.api_keys) if has_api_keys_attr else 0
+        )
+
+        # Debug logging
+        logger.info(
+            f"API Key detection: has_security_config={has_security_config}, has_api_keys_attr={has_api_keys_attr}, api_keys_count={api_keys_count}"
+        )
+
         self.api_key_auth_enabled = (
-            hasattr(self.app, "key_validator")
-            and self.app.key_validator.is_authentication_enabled()
+            has_security_config and has_api_keys_attr and api_keys_count > 0
         )
 
         # Check Google OAuth authentication
