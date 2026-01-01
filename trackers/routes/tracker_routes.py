@@ -6,7 +6,12 @@ from sqlalchemy.exc import IntegrityError
 from trackers.auth.context import get_current_user
 from trackers.auth.decorators import require_auth
 from trackers.db import database as db_module
-from trackers.db.trackerdb import create_tracker, get_all_trackers
+from trackers.db.trackerdb import (
+    create_tracker,
+    delete_user_tracker,
+    get_all_trackers,
+    get_user_tracker,
+)
 from trackers.services.user_service import UserService
 
 tracker_bp = Blueprint("tracker", __name__)
