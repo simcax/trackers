@@ -212,6 +212,22 @@ def init_auth_routes(config: GoogleOAuthConfig) -> Blueprint:
 @require_https
 def login():
     """
+    Display main login page with both authentication options.
+
+    Requirements: 5.2 - Display both Google OAuth and email/password login options
+    """
+    # Display main login page with both authentication options
+    redirect_after_login = request.args.get("redirect")
+    response = render_template(
+        "auth/main_login.html", redirect_url=redirect_after_login
+    )
+    return response
+
+
+@auth_bp.route("/google/login")
+@require_https
+def google_login():
+    """
     Initiate Google OAuth login flow.
 
     Requirements: 2.1 - Redirect to Google's authorization endpoint

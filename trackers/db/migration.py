@@ -1317,6 +1317,21 @@ class MigrationEngine:
                                 result.success = False
                                 result.errors.extend(user_migration_result.errors)
                                 result.message += f" (User migration failed: {user_migration_result.message})"
+
+                            # Run email/password migration after user migration succeeds
+                            # Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
+                            if user_migration_result.success:
+                                email_password_success = (
+                                    self._run_email_password_migration()
+                                )
+                                if not email_password_success:
+                                    result.success = False
+                                    result.errors.append(
+                                        "Email/password migration failed"
+                                    )
+                                    result.message += (
+                                        " (Email/password migration failed)"
+                                    )
                         else:
                             # Skip user migration if users table not in metadata
                             self.migration_logger.logger.info(
@@ -1610,6 +1625,58 @@ class MigrationEngine:
                 duration_seconds=0.0,
                 message=f"User migration integration failed: {e}",
             )
+
+    def _run_email_password_migration(self) -> bool:
+        """
+        Run email/password authentication migration as part of the main migration process.
+
+        This method integrates email/password migration functionality directly into the
+        main migration engine, extending the users table with password-related fields.
+
+        Returns:
+            True if migration was successful, False otherwise
+
+        Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
+        """
+        try:
+            # Import EmailPasswordMigration here to avoid circular imports
+            from .email_password_migration import EmailPasswordMigration
+
+            self.migration_logger.log_migration_phase(
+                "Email/Password Migration",
+                "Starting email/password authentication migration",
+            )
+
+            # Create email/password migration instance
+            email_password_migration = EmailPasswordMigration(
+                engine=self.engine,
+                logger=self.logger,
+            )
+
+            # Check if migration is needed
+            if not email_password_migration.is_migration_needed():
+                self.migration_logger.logger.info(
+                    "Email/password migration not needed - already applied"
+                )
+                return True
+
+            # Run email/password migration
+            success = email_password_migration.apply_migration()
+
+            # Log migration results
+            if success:
+                self.migration_logger.logger.info(
+                    "✓ Email/password migration completed successfully"
+                )
+            else:
+                self.migration_logger.logger.error("✗ Email/password migration failed")
+
+            return success
+
+        except Exception as e:
+            # Handle email/password migration errors gracefully
+            self.migration_logger.log_error(e, "email/password migration integration")
+            return False
 
     def run_complete_migration(self) -> MigrationResult:
         """

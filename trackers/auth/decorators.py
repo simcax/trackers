@@ -103,14 +103,16 @@ def get_auth_context() -> AuthenticationContext:
 def require_auth(
     allow_api_key: bool = True,
     allow_google_oauth: bool = True,
+    allow_email_password: bool = True,
     redirect_to_login: bool = True,
 ) -> callable:
     """
-    Decorator that requires authentication via API key, Google OAuth, or both.
+    Decorator that requires authentication via API key, Google OAuth, email/password, or any combination.
 
     Args:
         allow_api_key: Whether to allow API key authentication
         allow_google_oauth: Whether to allow Google OAuth authentication
+        allow_email_password: Whether to allow email/password authentication
         redirect_to_login: Whether to redirect to login page for web requests
 
     Returns:
@@ -126,7 +128,7 @@ def require_auth(
                 # Initialize authentication context
                 auth_context = AuthenticationContext()
 
-                # Check if both authentication methods are disabled - only then allow public access
+                # Check if all authentication methods are disabled - only then allow public access
                 api_key_enabled = (
                     allow_api_key
                     and hasattr(current_app, "key_validator")
@@ -135,9 +137,16 @@ def require_auth(
                 google_oauth_enabled = (
                     allow_google_oauth and _has_google_auth_configured()
                 )
+                email_password_enabled = (
+                    allow_email_password and _has_email_password_auth_configured()
+                )
 
-                if not api_key_enabled and not google_oauth_enabled:
-                    # Both authentication methods are disabled, allow public access
+                if (
+                    not api_key_enabled
+                    and not google_oauth_enabled
+                    and not email_password_enabled
+                ):
+                    # All authentication methods are disabled, allow public access
                     auth_context = AuthenticationContext(
                         is_authenticated=False,
                         auth_method="public",
@@ -165,49 +174,60 @@ def require_auth(
                 if google_oauth_enabled:
                     google_oauth_valid, google_user_info = _check_google_oauth_auth()
 
-                # Determine authentication status and method
-                if api_key_valid and google_oauth_valid:
-                    # Both methods authenticated - prefer Google OAuth user info
-                    auth_context = AuthenticationContext(
-                        is_authenticated=True,
-                        auth_method="both",
-                        user_info=google_user_info,
-                        api_key_valid=True,
+                # Check email/password authentication if enabled
+                email_password_valid = False
+                email_password_user_info = None
+                if email_password_enabled:
+                    email_password_valid, email_password_user_info = (
+                        _check_email_password_auth()
                     )
-                elif api_key_valid:
-                    # Only API key authenticated
+
+                # Determine authentication status and method
+                auth_methods = []
+                user_info = None
+
+                if api_key_valid:
+                    auth_methods.append("api_key")
+                if google_oauth_valid:
+                    auth_methods.append("google_oauth")
+                    user_info = google_user_info  # Prefer Google OAuth user info
+                if email_password_valid:
+                    auth_methods.append("email_password")
+                    if not user_info:  # Use email/password user info if no Google OAuth
+                        user_info = email_password_user_info
+
+                if auth_methods:
+                    # At least one method authenticated
+                    auth_method = (
+                        "_".join(auth_methods)
+                        if len(auth_methods) > 1
+                        else auth_methods[0]
+                    )
+
+                    # Handle API key user info for compatibility
                     if (
-                        api_key_user_info
+                        api_key_valid
+                        and api_key_user_info
                         and api_key_user_info.get("auth_method") == "api_key"
                     ):
                         # User API key - create UserInfo object for compatibility
                         from .token_validator import UserInfo
 
-                        user_info = UserInfo(
+                        api_user_info = UserInfo(
                             email=api_key_user_info.get("email", ""),
                             name=api_key_user_info.get("name", "API User"),
                             google_id=api_key_user_info.get("google_id", ""),
                             picture_url="",
                             verified_email=True,
                         )
-                        auth_context = AuthenticationContext(
-                            is_authenticated=True,
-                            auth_method="api_key",
-                            user_info=user_info,
-                            api_key_valid=True,
-                        )
-                    else:
-                        # Environment API key - system access
-                        auth_context = AuthenticationContext(
-                            is_authenticated=True,
-                            auth_method="api_key",
-                            api_key_valid=True,
-                        )
-                elif google_oauth_valid:
+                        if not user_info:
+                            user_info = api_user_info
+
                     auth_context = AuthenticationContext(
                         is_authenticated=True,
-                        auth_method="google_oauth",
-                        user_info=google_user_info,
+                        auth_method=auth_method,
+                        user_info=user_info,
+                        api_key_valid=api_key_valid,
                     )
                 else:
                     # No valid authentication found
@@ -268,6 +288,44 @@ def require_google_oauth_only(redirect_to_login: bool = True) -> callable:
     )
 
 
+def require_email_password_only(redirect_to_login: bool = True) -> callable:
+    """
+    Decorator that requires only email/password authentication.
+
+    Args:
+        redirect_to_login: Whether to redirect to login page for web requests
+
+    Returns:
+        Decorator function for email/password-only route protection
+    """
+    return require_auth(
+        allow_api_key=False,
+        allow_google_oauth=False,
+        allow_email_password=True,
+        redirect_to_login=redirect_to_login,
+    )
+
+
+def require_web_auth(redirect_to_login: bool = True) -> callable:
+    """
+    Decorator that requires web-based authentication (Google OAuth or email/password).
+
+    This decorator is useful for web routes that should not accept API key authentication.
+
+    Args:
+        redirect_to_login: Whether to redirect to login page for web requests
+
+    Returns:
+        Decorator function for web authentication route protection
+    """
+    return require_auth(
+        allow_api_key=False,
+        allow_google_oauth=True,
+        allow_email_password=True,
+        redirect_to_login=redirect_to_login,
+    )
+
+
 def optional_auth() -> callable:
     """
     Decorator that provides authentication context but doesn't require authentication.
@@ -299,46 +357,60 @@ def optional_auth() -> callable:
                 if _has_google_auth_configured():
                     google_oauth_valid, google_user_info = _check_google_oauth_auth()
 
-                # Set authentication context based on what's available
-                if api_key_valid and google_oauth_valid:
-                    auth_context = AuthenticationContext(
-                        is_authenticated=True,
-                        auth_method="both",
-                        user_info=google_user_info,
-                        api_key_valid=True,
+                # Check email/password authentication if configured
+                email_password_valid = False
+                email_password_user_info = None
+                if _has_email_password_auth_configured():
+                    email_password_valid, email_password_user_info = (
+                        _check_email_password_auth()
                     )
-                elif api_key_valid:
+
+                # Set authentication context based on what's available
+                auth_methods = []
+                user_info = None
+
+                if api_key_valid:
+                    auth_methods.append("api_key")
+                if google_oauth_valid:
+                    auth_methods.append("google_oauth")
+                    user_info = google_user_info  # Prefer Google OAuth user info
+                if email_password_valid:
+                    auth_methods.append("email_password")
+                    if not user_info:  # Use email/password user info if no Google OAuth
+                        user_info = email_password_user_info
+
+                if auth_methods:
+                    # At least one method authenticated
+                    auth_method = (
+                        "_".join(auth_methods)
+                        if len(auth_methods) > 1
+                        else auth_methods[0]
+                    )
+
+                    # Handle API key user info for compatibility
                     if (
-                        api_key_user_info
+                        api_key_valid
+                        and api_key_user_info
                         and api_key_user_info.get("auth_method") == "api_key"
                     ):
                         # User API key - create UserInfo object for compatibility
                         from .token_validator import UserInfo
 
-                        user_info = UserInfo(
+                        api_user_info = UserInfo(
                             email=api_key_user_info.get("email", ""),
                             name=api_key_user_info.get("name", "API User"),
                             google_id=api_key_user_info.get("google_id", ""),
                             picture_url="",
                             verified_email=True,
                         )
-                        auth_context = AuthenticationContext(
-                            is_authenticated=True,
-                            auth_method="api_key",
-                            user_info=user_info,
-                            api_key_valid=True,
-                        )
-                    else:
-                        auth_context = AuthenticationContext(
-                            is_authenticated=True,
-                            auth_method="api_key",
-                            api_key_valid=True,
-                        )
-                elif google_oauth_valid:
+                        if not user_info:
+                            user_info = api_user_info
+
                     auth_context = AuthenticationContext(
                         is_authenticated=True,
-                        auth_method="google_oauth",
-                        user_info=google_user_info,
+                        auth_method=auth_method,
+                        user_info=user_info,
+                        api_key_valid=api_key_valid,
                     )
 
                 # Store authentication context in Flask g
@@ -356,6 +428,39 @@ def optional_auth() -> callable:
         return decorated_function
 
     return decorator
+
+
+def _has_email_password_auth_configured() -> bool:
+    """Check if email/password authentication is configured and enabled."""
+    return (
+        hasattr(current_app, "email_password_service")
+        and current_app.email_password_service is not None
+    )
+
+
+def _check_email_password_auth() -> tuple[bool, Optional[UserInfo]]:
+    """
+    Check email/password authentication for the current request.
+
+    Returns:
+        tuple: (is_authenticated, user_info)
+    """
+    try:
+        if not hasattr(current_app, "email_password_service"):
+            return False, None
+
+        email_password_service = current_app.email_password_service
+
+        # Check if user is authenticated via email/password session
+        if email_password_service.is_authenticated():
+            user_info = email_password_service.get_current_user()
+            return True, user_info
+        else:
+            return False, None
+
+    except Exception as e:
+        logger.error(f"Error checking email/password authentication: {str(e)}")
+        return False, None
 
 
 def _has_api_key_auth_configured() -> bool:
@@ -496,6 +601,15 @@ def _handle_unauthenticated_request(
     client_ip = get_client_ip()
     logger.warning(f"Unauthenticated request to {request.endpoint} from {client_ip}")
 
+    # Determine available authentication methods for error message
+    available_methods = []
+    if _has_api_key_auth_configured():
+        available_methods.append("api_key")
+    if _has_google_auth_configured():
+        available_methods.append("google_oauth")
+    if _has_email_password_auth_configured():
+        available_methods.append("email_password")
+
     # For API requests (JSON), return JSON error
     if request.is_json or request.headers.get("Accept", "").startswith(
         "application/json"
@@ -503,13 +617,15 @@ def _handle_unauthenticated_request(
         return jsonify(
             {
                 "error": "Authentication required",
-                "message": "This endpoint requires authentication via API key or Google OAuth",
-                "auth_methods": ["api_key", "google_oauth"],
+                "message": "This endpoint requires authentication",
+                "auth_methods": available_methods,
             }
         ), 401
 
     # For web requests, redirect to login or return error page
-    if redirect_to_login and _has_google_auth_configured():
+    if redirect_to_login and (
+        _has_google_auth_configured() or _has_email_password_auth_configured()
+    ):
         # Store the current URL for post-login redirect
         from flask import session
 

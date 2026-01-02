@@ -247,11 +247,13 @@ def configure_user_context(app):
 
                 admin_functions_available = False
 
-            # For web interface, only consider Google OAuth authentication
+            # For web interface, consider both Google OAuth and email/password authentication
             # API keys should only be used for API endpoints, not web pages
             try:
                 from trackers.auth.decorators import (
+                    _check_email_password_auth,
                     _check_google_oauth_auth,
+                    _has_email_password_auth_configured,
                     _has_google_auth_configured,
                 )
 
@@ -259,23 +261,50 @@ def configure_user_context(app):
                 is_web_authenticated = False
                 auth_method = None
                 has_google_oauth = False
+                has_email_password = False
 
+                # Always check if authentication methods are configured
                 if _has_google_auth_configured():
-                    google_oauth_valid, google_user_info = _check_google_oauth_auth()
-                    if google_oauth_valid and google_user_info:
-                        current_user = google_user_info
-                        is_web_authenticated = True
-                        auth_method = "google_oauth"
-                        has_google_oauth = True
+                    has_google_oauth = True
+
+                if _has_email_password_auth_configured():
+                    has_email_password = True
+
+                # Check Google OAuth authentication first
+                if has_google_oauth:
+                    try:
+                        google_oauth_valid, google_user_info = (
+                            _check_google_oauth_auth()
+                        )
+                        if google_oauth_valid and google_user_info:
+                            current_user = google_user_info
+                            is_web_authenticated = True
+                            auth_method = "google_oauth"
+                    except Exception as e:
+                        logger.debug(f"Google OAuth check failed: {str(e)}")
+
+                # Check email/password authentication if not already authenticated
+                if not is_web_authenticated and has_email_password:
+                    try:
+                        email_password_valid, email_password_user_info = (
+                            _check_email_password_auth()
+                        )
+                        if email_password_valid and email_password_user_info:
+                            current_user = email_password_user_info
+                            is_web_authenticated = True
+                            auth_method = "email_password"
+                    except Exception as e:
+                        logger.debug(f"Email/password check failed: {str(e)}")
 
             except Exception as e:
                 logger.error(
-                    f"Error checking Google OAuth in context processor: {str(e)}"
+                    f"Error checking authentication in context processor: {str(e)}"
                 )
                 current_user = None
                 is_web_authenticated = False
                 auth_method = None
                 has_google_oauth = False
+                has_email_password = False
 
             return {
                 "current_user": current_user,
@@ -283,6 +312,7 @@ def configure_user_context(app):
                 "auth_method": auth_method,
                 "has_api_key_auth": False,  # Never show API key auth status in web UI
                 "has_google_oauth": has_google_oauth,
+                "has_email_password": has_email_password,
                 # Image utility functions
                 "get_proxied_image_url": get_proxied_image_url,
                 "get_avatar_initials": get_avatar_initials,
@@ -300,6 +330,7 @@ def configure_user_context(app):
                 "auth_method": None,
                 "has_api_key_auth": False,
                 "has_google_oauth": False,
+                "has_email_password": False,
             }
 
     @app.before_request

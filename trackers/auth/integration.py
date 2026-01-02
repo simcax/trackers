@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 class UnifiedAuthSystem:
     """
-    Unified authentication system that integrates Google OAuth with API key authentication.
+    Unified authentication system that integrates Google OAuth, email/password, and API key authentication.
 
-    This class provides a single interface for managing both authentication methods
+    This class provides a single interface for managing all authentication methods
     and ensures they work together seamlessly throughout the application.
     """
 
@@ -37,6 +37,7 @@ class UnifiedAuthSystem:
         self.app = app
         self.google_auth_enabled = False
         self.api_key_auth_enabled = False
+        self.email_password_auth_enabled = False
 
         if app is not None:
             self.init_app(app)
@@ -93,6 +94,9 @@ class UnifiedAuthSystem:
         except ImportError:
             self.google_auth_enabled = False
 
+        # Check email/password authentication
+        self.email_password_auth_enabled = self._check_email_password_config()
+
     def _setup_auth_integration(self) -> None:
         """Set up integration between authentication methods."""
 
@@ -129,6 +133,9 @@ class UnifiedAuthSystem:
             click.echo(
                 f"  Google OAuth: {'✓ Enabled' if self.google_auth_enabled else '✗ Disabled'}"
             )
+            click.echo(
+                f"  Email/Password: {'✓ Enabled' if self.email_password_auth_enabled else '✗ Disabled'}"
+            )
 
             if self.api_key_auth_enabled:
                 key_count = len(self.app.security_config.api_keys)
@@ -139,6 +146,9 @@ class UnifiedAuthSystem:
 
                 click.echo(f"  OAuth Client ID: {google_oauth_config.client_id}")
                 click.echo(f"  OAuth Redirect URI: {google_oauth_config.redirect_uri}")
+
+            if self.email_password_auth_enabled:
+                click.echo("  Email/Password: Service initialized and configured")
 
         @self.app.cli.command("test-auth")
         def test_auth_command():
@@ -177,6 +187,19 @@ class UnifiedAuthSystem:
             else:
                 click.echo("- Google OAuth: Not configured")
 
+            # Test email/password authentication
+            if self.email_password_auth_enabled:
+                try:
+                    test_result = self._test_email_password_config()
+                    if test_result:
+                        click.echo("✓ Email/Password authentication: OK")
+                    else:
+                        click.echo("✗ Email/Password authentication: Failed")
+                except Exception as e:
+                    click.echo(f"✗ Email/Password authentication: Error - {str(e)}")
+            else:
+                click.echo("- Email/Password authentication: Not configured")
+
     def _get_click(self):
         """Get click module if available."""
         try:
@@ -185,6 +208,48 @@ class UnifiedAuthSystem:
             return click
         except ImportError:
             return None
+
+    def _check_email_password_config(self) -> bool:
+        """Check if email/password authentication is properly configured."""
+        try:
+            # Check if email/password service is available
+            if not hasattr(self.app, "email_password_service"):
+                return False
+
+            # Check if required components are available
+            from trackers.auth.password_hasher import PasswordHasher
+            from trackers.models.user_model import UserModel
+
+            # Verify password hasher is working
+            password_hasher = PasswordHasher()
+            test_password = "TestPassword123!"
+            test_hash = password_hasher.hash_password(test_password)
+            if not password_hasher.verify_password(test_password, test_hash):
+                logger.warning("Password hasher verification failed")
+                return False
+
+            # Check if user model has required password fields
+            user_model_attrs = dir(UserModel)
+            required_attrs = [
+                "password_hash",
+                "email_verified",
+                "failed_login_attempts",
+            ]
+            for attr in required_attrs:
+                if attr not in user_model_attrs:
+                    logger.warning(f"UserModel missing required attribute: {attr}")
+                    return False
+
+            return True
+
+        except ImportError as e:
+            logger.warning(
+                f"Email/password authentication components not available: {e}"
+            )
+            return False
+        except Exception as e:
+            logger.warning(f"Error checking email/password configuration: {e}")
+            return False
 
     def _test_api_key_auth(self) -> bool:
         """Test API key authentication configuration."""
@@ -224,6 +289,43 @@ class UnifiedAuthSystem:
         except Exception:
             return False
 
+    def _test_email_password_config(self) -> bool:
+        """Test email/password authentication configuration."""
+        try:
+            # Check if email/password service is available and functional
+            if not hasattr(self.app, "email_password_service"):
+                return False
+
+            email_password_service = self.app.email_password_service
+
+            # Test password hashing functionality
+            from trackers.auth.password_hasher import PasswordHasher
+
+            password_hasher = PasswordHasher()
+            test_password = "TestPassword123!"
+            test_hash = password_hasher.hash_password(test_password)
+
+            # Verify password verification works
+            if not password_hasher.verify_password(test_password, test_hash):
+                return False
+
+            # Test password validation
+            validation_errors = password_hasher.validate_password_strength(
+                test_password
+            )
+            if validation_errors:
+                return False
+
+            # Test weak password rejection
+            weak_password_errors = password_hasher.validate_password_strength("weak")
+            if not weak_password_errors:
+                return False
+
+            return True
+
+        except Exception:
+            return False
+
     def _log_auth_system_status(self) -> None:
         """Log the status of the unified authentication system."""
         logger.info("Unified Authentication System Status:")
@@ -233,24 +335,54 @@ class UnifiedAuthSystem:
         logger.info(
             f"  Google OAuth Authentication: {'Enabled' if self.google_auth_enabled else 'Disabled'}"
         )
+        logger.info(
+            f"  Email/Password Authentication: {'Enabled' if self.email_password_auth_enabled else 'Disabled'}"
+        )
 
-        if not self.api_key_auth_enabled and not self.google_auth_enabled:
+        total_enabled = sum(
+            [
+                self.api_key_auth_enabled,
+                self.google_auth_enabled,
+                self.email_password_auth_enabled,
+            ]
+        )
+
+        if total_enabled == 0:
             logger.warning("⚠ No authentication methods are enabled!")
             logger.warning("⚠ All endpoints will be publicly accessible")
-        elif self.api_key_auth_enabled and self.google_auth_enabled:
-            logger.info("✓ Both authentication methods are available")
-            logger.info("✓ Routes can use either or both authentication methods")
-        elif self.api_key_auth_enabled:
-            logger.info("✓ API Key authentication is available")
-            logger.info("- Google OAuth is not configured")
+        elif total_enabled == 3:
+            logger.info("✓ All three authentication methods are available")
+            logger.info("✓ Routes can use any combination of authentication methods")
+        elif total_enabled == 2:
+            enabled_methods = []
+            if self.api_key_auth_enabled:
+                enabled_methods.append("API Key")
+            if self.google_auth_enabled:
+                enabled_methods.append("Google OAuth")
+            if self.email_password_auth_enabled:
+                enabled_methods.append("Email/Password")
+            logger.info(
+                f"✓ Two authentication methods are available: {', '.join(enabled_methods)}"
+            )
         else:
-            logger.info("✓ Google OAuth authentication is available")
-            logger.info("- API Key authentication is not configured")
+            if self.api_key_auth_enabled:
+                logger.info("✓ API Key authentication is available")
+                logger.info("- Google OAuth and Email/Password are not configured")
+            elif self.google_auth_enabled:
+                logger.info("✓ Google OAuth authentication is available")
+                logger.info("- API Key and Email/Password are not configured")
+            elif self.email_password_auth_enabled:
+                logger.info("✓ Email/Password authentication is available")
+                logger.info("- API Key and Google OAuth are not configured")
 
     @property
     def is_any_auth_enabled(self) -> bool:
         """Check if any authentication method is enabled."""
-        return self.api_key_auth_enabled or self.google_auth_enabled
+        return (
+            self.api_key_auth_enabled
+            or self.google_auth_enabled
+            or self.email_password_auth_enabled
+        )
 
     @property
     def available_auth_methods(self) -> list[str]:
@@ -260,6 +392,8 @@ class UnifiedAuthSystem:
             methods.append("api_key")
         if self.google_auth_enabled:
             methods.append("google_oauth")
+        if self.email_password_auth_enabled:
+            methods.append("email_password")
         return methods
 
     def get_auth_status(self) -> dict:
@@ -272,6 +406,7 @@ class UnifiedAuthSystem:
         return {
             "api_key_auth_enabled": self.api_key_auth_enabled,
             "google_oauth_enabled": self.google_auth_enabled,
+            "email_password_auth_enabled": self.email_password_auth_enabled,
             "any_auth_enabled": self.is_any_auth_enabled,
             "available_methods": self.available_auth_methods,
             "api_key_count": len(self.app.security_config.api_keys)

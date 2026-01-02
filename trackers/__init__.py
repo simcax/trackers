@@ -47,6 +47,9 @@ def create_app(test_config=None):
     # Initialize Google OAuth authentication if configured
     _initialize_google_auth(app)
 
+    # Initialize email/password authentication
+    _initialize_email_password_auth(app)
+
     # Initialize unified authentication system
     _initialize_unified_auth(app)
 
@@ -165,6 +168,44 @@ def create_app(test_config=None):
         return "Hello, World!"
 
     return app
+
+
+def _initialize_email_password_auth(app):
+    """
+    Initialize email/password authentication.
+
+    This function enables email/password authentication by setting up the
+    EmailPasswordAuthService and registering the authentication routes.
+
+    Requirements: 5.2, 5.3, 5.4, 5.5 - Email/password authentication integration
+    """
+    try:
+        # Import email/password authentication components
+        from trackers.auth.email_password_auth_service import EmailPasswordAuthService
+        from trackers.auth.email_password_routes import init_email_password_routes
+        from trackers.db.database import get_db_session
+
+        # Initialize email/password authentication service
+        # Note: The service will create database sessions as needed using get_db_session()
+        email_password_service = EmailPasswordAuthService()
+
+        # Initialize email/password routes with service
+        email_password_bp = init_email_password_routes(email_password_service)
+
+        # Register email/password blueprint
+        app.register_blueprint(email_password_bp)
+
+        app.logger.info("✓ Email/password authentication enabled")
+        app.logger.info("✓ Email/password routes registered")
+
+        # Store reference in app for access in other components
+        app.email_password_service = email_password_service
+
+    except Exception as e:
+        app.logger.warning(f"Failed to initialize email/password authentication: {e}")
+        app.logger.info(
+            "Application will continue without email/password authentication"
+        )
 
 
 def _initialize_unified_auth(app):

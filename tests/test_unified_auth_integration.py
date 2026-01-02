@@ -202,11 +202,18 @@ class TestUnifiedAuthIntegration:
                 with patch(
                     "trackers.auth.decorators._check_api_key_auth"
                 ) as mock_check_api:
-                    mock_has_api.return_value = True
-                    mock_check_api.return_value = True
+                    with patch(
+                        "trackers.auth.decorators._has_email_password_auth_configured"
+                    ) as mock_has_email_password:
+                        mock_has_api.return_value = True
+                        mock_check_api.return_value = (
+                            True,
+                            None,
+                        )  # Return tuple as expected
+                        mock_has_email_password.return_value = False
 
-                    result = test_route()
-                    assert result == "success"
+                        result = test_route()
+                        assert result == "success"
 
     def test_context_summary_no_request(self):
         """Test context summary when no request context exists."""
