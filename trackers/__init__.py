@@ -22,6 +22,7 @@ def create_app(test_config=None):
     # Configure Flask app with environment-aware settings
     # Check for SECRET_KEY or GH_SECRET_KEY (GitHub Actions deployment)
     secret_key = os.getenv("SECRET_KEY") or os.getenv("GH_SECRET_KEY", "dev")
+
     app.config.from_mapping(
         SECRET_KEY=secret_key,
         DATABASE=os.path.join(app.instance_path, "flaskr.sqlite"),
@@ -110,7 +111,7 @@ def create_app(test_config=None):
         app.logger.error(f"Tried directories: {possible_static_dirs}")
         app.logger.error(f"Current working directory: {os.getcwd()}")
         app.logger.error(f"App root path: {app.root_path}")
-
+        app.logger.info(f"Secret Key length: {len(secret_key)}")
         from flask import abort
 
         abort(404)
