@@ -19,8 +19,11 @@ def create_app(test_config=None):
         static_folder="../static",
         static_url_path="/static",
     )
+    # Configure Flask app with environment-aware settings
+    # Check for SECRET_KEY or GH_SECRET_KEY (GitHub Actions deployment)
+    secret_key = os.getenv("SECRET_KEY") or os.getenv("GH_SECRET_KEY", "dev")
     app.config.from_mapping(
-        SECRET_KEY="dev",
+        SECRET_KEY=secret_key,
         DATABASE=os.path.join(app.instance_path, "flaskr.sqlite"),
     )
 
