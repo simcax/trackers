@@ -10,6 +10,7 @@ This module provides Flask routes for the web interface, including:
 Validates: Requirements 5.1, 5.2, 5.3, 5.4
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -31,6 +32,8 @@ from trackers.auth.decorators import optional_auth, require_auth
 from trackers.db import database as db_module
 from trackers.db.tracker_values_db import get_tracker_values
 from trackers.db.trackerdb import create_tracker, get_all_trackers
+
+logger = logging.getLogger(__name__)
 
 # Create web blueprint with template folder configuration
 # Static files are handled by the main Flask app, not the blueprint
@@ -704,6 +707,8 @@ def systems_page():
     from flask import render_template_string
 
     from trackers.auth.context import get_current_user, is_authenticated
+    from trackers.db.database import get_db_session
+    from trackers.services.stats_service import StatsService
 
     # Get authentication context
     current_user = get_current_user()
@@ -711,6 +716,20 @@ def systems_page():
 
     # Get admin status information
     admin_status = get_admin_status_info()
+
+    # Get system statistics
+    try:
+        with get_db_session() as db:
+            stats_service = StatsService(db)
+            system_stats = stats_service.get_quick_stats()
+    except Exception as e:
+        logger.error(f"Error getting system stats: {e}")
+        system_stats = {
+            "total_users": 0,
+            "google_users": 0,
+            "email_users": 0,
+            "total_trackers": 0,
+        }
 
     # Show systems administration page for admin users
     template = """
@@ -773,6 +792,29 @@ def systems_page():
                 {% if admin_status.current_user_email %}
                 <p class="text-orange-100"><strong>Current User Email:</strong> {{ admin_status.current_user_email }}</p>
                 {% endif %}
+            </div>
+            
+            <!-- System Statistics -->
+            <div class="card mb-6" style="background: #1e293b; border: 1px solid #475569;">
+                <h2 class="text-xl font-semibold mb-4 text-slate-300">📊 System Statistics</h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-blue-400">{{ system_stats.total_users }}</div>
+                        <div class="text-sm text-gray-400">Total Users</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-green-400">{{ system_stats.google_users }}</div>
+                        <div class="text-sm text-gray-400">Google Users</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-purple-400">{{ system_stats.email_users }}</div>
+                        <div class="text-sm text-gray-400">Email Users</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-yellow-400">{{ system_stats.total_trackers }}</div>
+                        <div class="text-sm text-gray-400">Total Trackers</div>
+                    </div>
+                </div>
             </div>
             
             <div class="grid">
@@ -850,6 +892,7 @@ def systems_page():
         current_user=current_user,
         is_authenticated=authenticated,
         admin_status=admin_status,
+        system_stats=system_stats,
     )
 
 
