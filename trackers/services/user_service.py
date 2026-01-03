@@ -173,7 +173,13 @@ class UserService:
         try:
             return self.db.query(UserModel).filter(UserModel.email == email).first()
         except Exception as e:
-            logger.error(f"Error getting user by email {email}: {str(e)}")
+            # Redact email from error logs for privacy
+            redacted_email = (
+                email.split("@")[0][:3] + "***@" + email.split("@")[1]
+                if "@" in email
+                else "***"
+            )
+            logger.error(f"Error getting user by email {redacted_email}: {str(e)}")
             return None
 
     def get_user_by_id(self, user_id: int) -> Optional[UserModel]:
