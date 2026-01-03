@@ -239,6 +239,7 @@ class UserService:
 
         This method retrieves the current user's database record based on
         the authentication information stored in the Flask session.
+        Supports both Google OAuth and email/password authentication.
 
         Returns:
             Optional[UserModel]: Current user model if authenticated, None otherwise
@@ -251,25 +252,36 @@ class UserService:
             if not session_user_data:
                 return None
 
-            # Extract Google user ID from session
+            # Extract user info from session
             user_info_data = session_user_data.get("user_info")
             if not user_info_data:
                 return None
 
+            # Try to get user by Google ID first (for Google OAuth users)
             google_user_id = user_info_data.get("google_id")
-            if not google_user_id:
-                return None
+            if google_user_id:
+                user = self.get_user_by_google_id(google_user_id)
+                if user:
+                    logger.debug(
+                        f"Retrieved Google OAuth user from session: {user.email}"
+                    )
+                    return user
 
-            # Look up user in database
-            user = self.get_user_by_google_id(google_user_id)
-            if user:
-                logger.debug(f"Retrieved current user from session: {user.email}")
-                return user
-            else:
-                logger.warning(
-                    f"User with Google ID {google_user_id} not found in database"
-                )
-                return None
+            # If no Google ID or user not found, try by email (for email/password users)
+            email = user_info_data.get("email")
+            if email:
+                user = self.get_user_by_email(email)
+                if user:
+                    logger.debug(
+                        f"Retrieved email/password user from session: {user.email}"
+                    )
+                    return user
+
+            # No user found
+            logger.warning(
+                f"User not found in database for session data: google_id={google_user_id}, email={email}"
+            )
+            return None
 
         except Exception as e:
             logger.error(f"Error getting current user from session: {str(e)}")
