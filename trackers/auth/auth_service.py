@@ -308,6 +308,7 @@ class GoogleAuthService:
             str: URL to redirect to after logout
 
         Requirements: 6.3, 6.4 - Implement logout functionality with session cleanup
+        Requirements: 8.5 - Complete session cleanup on logout
         """
         client_ip = get_client_ip()
 
@@ -319,7 +320,7 @@ class GoogleAuthService:
             # Get access token for potential revocation
             access_token = self.session_manager.get_access_token()
 
-            # Clear local session first
+            # Clear local session first (this now includes complete cleanup)
             self.session_manager.clear_session()
 
             # Optionally revoke tokens at Google
@@ -347,7 +348,11 @@ class GoogleAuthService:
         except Exception as e:
             self.flask_logger.error(f"Error during logout: {str(e)}")
             # Even if logout fails, clear the session and redirect
-            self.session_manager.clear_session()
+            try:
+                self.session_manager.clear_session()
+            except Exception:
+                pass  # Ignore errors during cleanup
+
             return self._get_logout_redirect_url()
 
     def refresh_authentication(self) -> bool:

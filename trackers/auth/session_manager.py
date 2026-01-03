@@ -215,6 +215,7 @@ class SessionManager:
         Clear all session data and invalidate authentication.
 
         Requirements: 6.1, 6.2 - Clear local session and invalidate stored tokens
+        Requirements: 8.5 - Proper session cleanup on logout
         """
         # Remove user session data
         session.pop(self.SESSION_USER_KEY, None)
@@ -222,8 +223,40 @@ class SessionManager:
         # Clear any temporary authentication state
         self._clear_temporary_state()
 
-        # Mark session as not permanent
+        # Clear any additional session data that might persist
+        self._clear_additional_session_data()
+
+        # Mark session as not permanent and regenerate session ID for security
         session.permanent = False
+
+        # Force session regeneration by clearing the entire session
+        # This prevents session fixation attacks
+        session.clear()
+
+    def _clear_additional_session_data(self) -> None:
+        """
+        Clear additional session data that might be stored by other components.
+
+        This ensures complete session cleanup on logout.
+
+        Requirements: 8.5 - Complete session cleanup
+        """
+        # Clear any post-login redirect URLs
+        session.pop("post_login_redirect", None)
+
+        # Clear any user preferences or cached data
+        session.pop("user_preferences", None)
+        session.pop("user_context", None)
+        session.pop("database_user_id", None)
+
+        # Clear any CSRF tokens or form data
+        session.pop("csrf_token", None)
+        session.pop("form_data", None)
+
+        # Clear any temporary data that might be stored
+        keys_to_clear = [key for key in session.keys() if key.startswith("temp_")]
+        for key in keys_to_clear:
+            session.pop(key, None)
 
     def generate_state_token(self) -> str:
         """
@@ -326,6 +359,7 @@ class SessionManager:
             bool: True if session was refreshed, False if no valid session
 
         Requirements: 5.2 - Include session expiration and renewal mechanisms
+        Requirements: 8.5 - Session persistence and renewal
         """
         user_session = self.get_user_session()
         if not user_session:
@@ -343,7 +377,85 @@ class SessionManager:
         # Store updated session
         session[self.SESSION_USER_KEY] = user_session.to_dict()
 
+        # Ensure session is marked as permanent and modified
+        session.permanent = True
+        session.modified = True
+
         return True
+
+    def extend_session_lifetime(self, additional_hours: int = None) -> bool:
+        """
+        Extend the current session lifetime by additional hours.
+
+        Args:
+            additional_hours: Additional hours to extend session (defaults to session_timeout_hours)
+
+        Returns:
+            bool: True if session was extended, False if no valid session
+
+        Requirements: 8.5 - Session lifetime management
+        """
+        user_session = self.get_user_session()
+        if not user_session:
+            return False
+
+        # Use default timeout if not specified
+        if additional_hours is None:
+            additional_hours = self.session_timeout_hours
+
+        # Extend the session creation time
+        user_session.session_created_at = datetime.utcnow()
+
+        # Store updated session
+        session[self.SESSION_USER_KEY] = user_session.to_dict()
+        session.permanent = True
+        session.modified = True
+
+        return True
+
+    def get_session_expiry_info(self) -> dict:
+        """
+        Get detailed information about session expiry times.
+
+        Returns:
+            dict: Session expiry information including remaining time
+
+        Requirements: 8.5 - Session monitoring and management
+        """
+        user_session = self.get_user_session()
+        if not user_session:
+            return {
+                "has_session": False,
+                "is_expired": True,
+            }
+
+        now = datetime.utcnow()
+        session_expires_at = user_session.session_created_at + timedelta(
+            hours=self.session_timeout_hours
+        )
+        token_expires_at = user_session.token_expires_at
+
+        # Calculate remaining times
+        session_remaining = session_expires_at - now
+        token_remaining = token_expires_at - now
+
+        return {
+            "has_session": True,
+            "is_expired": user_session.is_expired(self.session_timeout_hours),
+            "session_created_at": user_session.session_created_at.isoformat(),
+            "session_expires_at": session_expires_at.isoformat(),
+            "token_expires_at": token_expires_at.isoformat(),
+            "session_remaining_seconds": max(0, int(session_remaining.total_seconds())),
+            "token_remaining_seconds": max(0, int(token_remaining.total_seconds())),
+            "session_remaining_minutes": max(
+                0, int(session_remaining.total_seconds() / 60)
+            ),
+            "token_remaining_minutes": max(
+                0, int(token_remaining.total_seconds() / 60)
+            ),
+            "will_expire_soon": session_remaining.total_seconds()
+            < 3600,  # Less than 1 hour
+        }
 
     def get_session_info(self) -> dict:
         """
@@ -394,6 +506,7 @@ class SessionManager:
             app: Flask application instance
 
         Requirements: 8.3 - Implement secure session storage with appropriate flags
+        Requirements: 8.5 - Authentication state persistence across page refreshes and browser sessions
         """
         import os
         from datetime import timedelta
@@ -415,11 +528,14 @@ class SessionManager:
                 "SESSION_COOKIE_NAME": "tracker_session",  # Custom session cookie name
                 "SESSION_COOKIE_DOMAIN": None,  # Use default domain
                 "SESSION_COOKIE_PATH": "/",  # Available for entire application
-                # Session lifetime and management
+                # Session lifetime and management - Requirements: 8.5
                 "PERMANENT_SESSION_LIFETIME": timedelta(
                     hours=self.session_timeout_hours
                 ),
                 "SESSION_REFRESH_EACH_REQUEST": True,  # Refresh session on each request
+                # Enhanced session persistence settings
+                "SESSION_PERMANENT": True,  # Make sessions permanent by default
+                "SESSION_USE_SIGNER": True,  # Sign session cookies for integrity
                 # Ensure we have a secure secret key
                 "SECRET_KEY": app.config.get("SECRET_KEY")
                 or self._generate_secure_secret_key(),
@@ -428,6 +544,9 @@ class SessionManager:
 
         # Validate secret key security
         self._validate_secret_key_security(app)
+
+        # Configure session persistence hooks
+        self._configure_session_persistence_hooks(app)
 
         # Log security configuration
         self._log_session_security_config(app, is_production, is_https)
@@ -489,12 +608,17 @@ class SessionManager:
         secure_cookie = app.config.get("SESSION_COOKIE_SECURE", False)
         httponly = app.config.get("SESSION_COOKIE_HTTPONLY", False)
         samesite = app.config.get("SESSION_COOKIE_SAMESITE", "None")
+        permanent = app.config.get("SESSION_PERMANENT", False)
 
         app.logger.info("Session security configuration:")
         app.logger.info(f"  - Secure cookies: {secure_cookie}")
         app.logger.info(f"  - HttpOnly: {httponly}")
         app.logger.info(f"  - SameSite: {samesite}")
         app.logger.info(f"  - Session timeout: {self.session_timeout_hours} hours")
+        app.logger.info(f"  - Permanent sessions: {permanent}")
+        app.logger.info(
+            f"  - Session refresh on request: {app.config.get('SESSION_REFRESH_EACH_REQUEST', False)}"
+        )
 
         # Security warnings
         if is_production and not secure_cookie:
@@ -519,3 +643,76 @@ class SessionManager:
                 "Running in development mode - session cookies will not be secure over HTTP. "
                 "This is normal for local development."
             )
+
+    def _configure_session_persistence_hooks(self, app) -> None:
+        """
+        Configure session persistence hooks for enhanced session management.
+
+        Args:
+            app: Flask application instance
+
+        Requirements: 8.5 - Authentication state persistence across page refreshes and browser sessions
+        """
+        from flask import session
+
+        @app.before_request
+        def ensure_session_persistence():
+            """
+            Ensure session persistence is properly configured for each request.
+
+            This hook ensures that authenticated sessions are marked as permanent
+            and have proper expiration handling.
+            """
+            try:
+                # Check if user is authenticated
+                user_session_data = session.get(self.SESSION_USER_KEY)
+                if user_session_data:
+                    # Mark session as permanent to enable proper expiration
+                    session.permanent = True
+
+                    # Validate session data integrity
+                    try:
+                        user_session = UserSession.from_dict(user_session_data)
+
+                        # Check if session has expired
+                        if user_session.is_expired(self.session_timeout_hours):
+                            # Clear expired session
+                            self.clear_session()
+                            app.logger.info("Cleared expired user session")
+                        else:
+                            # Session is valid, ensure it's properly configured
+                            app.logger.debug(
+                                f"Valid session for user: {user_session.user_info.email}"
+                            )
+
+                    except ValueError as e:
+                        # Session data is corrupted, clear it
+                        self.clear_session()
+                        app.logger.warning(f"Cleared corrupted session data: {str(e)}")
+
+            except Exception as e:
+                app.logger.error(f"Error in session persistence hook: {str(e)}")
+
+        @app.after_request
+        def refresh_session_on_activity(response):
+            """
+            Refresh session expiration on user activity.
+
+            This extends the session lifetime when the user is actively using the application.
+
+            Requirements: 8.5 - Session persistence and renewal
+            """
+            try:
+                # Only refresh for authenticated users
+                user_session_data = session.get(self.SESSION_USER_KEY)
+                if user_session_data and session.permanent:
+                    # Update session modified time to extend lifetime
+                    session.modified = True
+                    app.logger.debug("Refreshed session expiration on user activity")
+
+            except Exception as e:
+                app.logger.error(f"Error refreshing session: {str(e)}")
+
+            return response
+
+        app.logger.info("Session persistence hooks configured")
