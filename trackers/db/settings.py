@@ -19,6 +19,7 @@ class Settings:
     db_name: str
     db_port: str
     db_url: str
+    ssl_mode: str
 
     def __init__(self) -> None:
         """
@@ -79,6 +80,11 @@ class Settings:
         self.db_port = os.getenv("POSTGRESQL_ADDON_PORT") or os.getenv(
             "DB_PORT", "5432"
         )
+
+        # SSL mode configuration (optional)
+        # Values: disable, allow, prefer, require, verify-ca, verify-full
+        # Default: auto-detect based on environment
+        self.ssl_mode = os.getenv("DB_SSL_MODE", "auto")
 
         # Raise error if any variables are missing with helpful message
         if missing_vars:

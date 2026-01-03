@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from contextlib import contextmanager
 
@@ -17,25 +18,68 @@ def _create_engine():
     Requirements: 6.1, 6.4 - Connection error handling with helpful messages
     """
     try:
-        # Configure engine with production-ready settings optimized for Clever Cloud
+        # Determine SSL mode
+        if settings.ssl_mode == "auto":
+            # Auto-detect based on environment
+            is_production = any(
+                [
+                    settings.db_url.startswith("postgresql://")
+                    and "clever-cloud" in settings.db_url,
+                    "POSTGRESQL_ADDON_HOST" in os.environ,
+                    os.environ.get("ENVIRONMENT") == "production",
+                ]
+            )
+            ssl_mode = "require" if is_production else "prefer"
+        else:
+            # Use explicitly configured SSL mode
+            ssl_mode = settings.ssl_mode
+
+        # Determine if we're in production for other settings
+        is_production = any(
+            [
+                settings.db_url.startswith("postgresql://")
+                and "clever-cloud" in settings.db_url,
+                "POSTGRESQL_ADDON_HOST" in os.environ,
+                os.environ.get("ENVIRONMENT") == "production",
+                ssl_mode
+                == "require",  # If SSL is required, assume production-like environment
+            ]
+        )
+
+        # Configure connection timeout based on SSL mode
+        if ssl_mode in ["require", "verify-ca", "verify-full"]:
+            connect_timeout = 15  # Longer timeout for SSL handshake
+        else:
+            connect_timeout = 10  # Standard timeout for local development
+
+        # Configure engine with environment-appropriate settings
         engine_kwargs = {
-            # Connection pool settings for production stability
-            "pool_size": 3,  # Reduced for Clever Cloud limits
-            "max_overflow": 5,  # Reduced overflow
-            "pool_timeout": 20,  # Shorter timeout
-            "pool_recycle": 1800,  # Recycle connections every 30 minutes (shorter for stability)
+            # Connection pool settings
+            "pool_size": 3 if is_production else 5,  # Smaller pool for Clever Cloud
+            "max_overflow": 5 if is_production else 10,
+            "pool_timeout": 20,
+            "pool_recycle": 1800
+            if is_production
+            else 3600,  # Shorter recycle for production
             "pool_pre_ping": True,  # Validate connections before use
-            # SSL and connection settings optimized for Clever Cloud PostgreSQL
+            # SSL and connection settings
             "connect_args": {
-                "sslmode": "require",  # Force SSL for Clever Cloud
-                "connect_timeout": 15,  # Longer connection timeout for SSL handshake
+                "sslmode": ssl_mode,
+                "connect_timeout": connect_timeout,
                 "application_name": "trackers-app",
-                "keepalives_idle": 600,  # Keep connection alive (10 minutes)
-                "keepalives_interval": 30,  # Check every 30 seconds
-                "keepalives_count": 3,  # 3 failed checks before considering connection dead
-                "tcp_user_timeout": 30000,  # 30 second TCP timeout (milliseconds)
             },
         }
+
+        # Add production-specific connection settings
+        if is_production:
+            engine_kwargs["connect_args"].update(
+                {
+                    "keepalives_idle": 600,  # Keep connection alive (10 minutes)
+                    "keepalives_interval": 30,  # Check every 30 seconds
+                    "keepalives_count": 3,  # 3 failed checks before considering connection dead
+                    "tcp_user_timeout": 30000,  # 30 second TCP timeout (milliseconds)
+                }
+            )
 
         return create_engine(settings.db_url, **engine_kwargs)
     except Exception as e:

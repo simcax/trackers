@@ -251,8 +251,6 @@ def configure_user_context(app):
             # API keys should only be used for API endpoints, not web pages
             try:
                 from trackers.auth.decorators import (
-                    _check_email_password_auth,
-                    _check_google_oauth_auth,
                     _has_email_password_auth_configured,
                     _has_google_auth_configured,
                 )
@@ -270,31 +268,60 @@ def configure_user_context(app):
                 if _has_email_password_auth_configured():
                     has_email_password = True
 
-                # Check Google OAuth authentication first
-                if has_google_oauth:
-                    try:
-                        google_oauth_valid, google_user_info = (
-                            _check_google_oauth_auth()
-                        )
-                        if google_oauth_valid and google_user_info:
-                            current_user = google_user_info
-                            is_web_authenticated = True
-                            auth_method = "google_oauth"
-                    except Exception as e:
-                        logger.debug(f"Google OAuth check failed: {str(e)}")
+                # Check authentication by examining session data directly
+                # This avoids the issue where _check_google_oauth_auth returns true for email/password users
+                try:
+                    from flask import session
 
-                # Check email/password authentication if not already authenticated
-                if not is_web_authenticated and has_email_password:
-                    try:
-                        email_password_valid, email_password_user_info = (
-                            _check_email_password_auth()
-                        )
-                        if email_password_valid and email_password_user_info:
-                            current_user = email_password_user_info
-                            is_web_authenticated = True
-                            auth_method = "email_password"
-                    except Exception as e:
-                        logger.debug(f"Email/password check failed: {str(e)}")
+                    from trackers.auth.token_validator import UserInfo
+
+                    session_user_data = session.get("google_auth_user")
+                    if session_user_data:
+                        user_info_data = session_user_data.get("user_info")
+                        if user_info_data:
+                            google_id = user_info_data.get("google_id")
+                            email = user_info_data.get("email")
+
+                            if google_id and email:
+                                # This is Google OAuth authentication (has google_id)
+                                if has_google_oauth:
+                                    google_user_info = UserInfo(
+                                        google_id=google_id,
+                                        email=email,
+                                        name=user_info_data.get("name", ""),
+                                        picture_url=user_info_data.get("picture_url"),
+                                        verified_email=user_info_data.get(
+                                            "verified_email", False
+                                        ),
+                                    )
+                                    current_user = google_user_info
+                                    is_web_authenticated = True
+                                    auth_method = "google_oauth"
+                                    logger.debug(
+                                        f"Detected Google OAuth authentication for: {email}"
+                                    )
+
+                            elif google_id is None and email:
+                                # This is email/password authentication (no google_id)
+                                if has_email_password:
+                                    email_password_user_info = UserInfo(
+                                        google_id=None,
+                                        email=email,
+                                        name=user_info_data.get("name", ""),
+                                        picture_url=user_info_data.get("picture_url"),
+                                        verified_email=user_info_data.get(
+                                            "verified_email", False
+                                        ),
+                                    )
+                                    current_user = email_password_user_info
+                                    is_web_authenticated = True
+                                    auth_method = "email_password"
+                                    logger.debug(
+                                        f"Detected email/password authentication for: {email}"
+                                    )
+
+                except Exception as e:
+                    logger.debug(f"Session authentication check failed: {str(e)}")
 
             except Exception as e:
                 logger.error(
