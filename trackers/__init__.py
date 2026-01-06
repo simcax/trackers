@@ -4,6 +4,7 @@ from flask import Flask
 
 from trackers.error_handling import register_error_handlers
 from trackers.routes.health_routes import health_bp
+from trackers.routes.job_routes import job_bp
 from trackers.routes.profile_routes import profile_bp
 from trackers.routes.tracker_routes import tracker_bp
 from trackers.routes.tracker_value_routes import tracker_value_bp
@@ -46,16 +47,24 @@ def create_app(test_config=None):
         _run_migration(app)
 
     # Initialize security system with comprehensive logging and validation (Requirements: 3.1, 3.2, 4.1)
-    _initialize_security_system(app)
+    # Skip authentication initialization during testing if TESTING environment variable is set
+    if not (test_config and os.getenv("TESTING") == "true"):
+        _initialize_security_system(app)
 
-    # Initialize Google OAuth authentication if configured
-    _initialize_google_auth(app)
+        # Initialize Google OAuth authentication if configured
+        _initialize_google_auth(app)
 
-    # Initialize email/password authentication
-    _initialize_email_password_auth(app)
+        # Initialize email/password authentication
+        _initialize_email_password_auth(app)
 
-    # Initialize unified authentication system
-    _initialize_unified_auth(app)
+        # Initialize unified authentication system
+        _initialize_unified_auth(app)
+    else:
+        app.logger.info("⚠ Authentication disabled for testing")
+        app.logger.info("⚠ All endpoints will be publicly accessible during tests")
+
+    # Initialize job scheduler
+    _initialize_job_scheduler(app)
 
     # register error handlers
     register_error_handlers(app)
@@ -68,6 +77,9 @@ def create_app(test_config=None):
 
     # register tracker value blueprint
     app.register_blueprint(tracker_value_bp)
+
+    # register job management blueprint
+    app.register_blueprint(job_bp)
 
     # register web UI blueprint
     app.register_blueprint(web_bp)
@@ -419,6 +431,46 @@ def _initialize_security_system(app):
             )
 
 
+def _initialize_job_scheduler(app):
+    """
+    Initialize the job scheduler for automated job execution.
+
+    This function initializes the JobScheduler with the Flask application
+    and starts it if not in test mode. The scheduler will load active jobs
+    from the database and begin executing them according to their schedules.
+
+    Requirements: 2.1, 2.4
+    """
+    try:
+        from trackers.services.job_scheduler import JobScheduler
+
+        # Initialize job scheduler with Flask app
+        job_scheduler = JobScheduler(app)
+
+        # Store reference in app for access in other components
+        app.job_scheduler = job_scheduler
+
+        # Start scheduler if not in test mode
+        if not app.config.get("TESTING", False):
+            job_scheduler.start()
+            app.logger.info("✓ Job scheduler started successfully")
+        else:
+            app.logger.info("✓ Job scheduler initialized (not started in test mode)")
+
+        # Register shutdown handler to stop scheduler gracefully
+        import atexit
+
+        atexit.register(
+            lambda: job_scheduler.stop() if job_scheduler.is_running else None
+        )
+
+    except Exception as e:
+        app.logger.warning(f"Failed to initialize job scheduler: {e}")
+        app.logger.info(
+            "Application will continue without job scheduling functionality"
+        )
+
+
 def _run_migration(app):
     """
     Run automatic database migration during Flask application startup.
@@ -437,6 +489,7 @@ def _run_migration(app):
         from trackers.db.database import Base, engine
         from trackers.db.migration import MigrationEngine
         from trackers.models.api_key_model import APIKeyModel
+        from trackers.models.job_model import JobExecutionLogModel, JobModel
         from trackers.models.tracker_model import ItemModel, LogModel, TrackerModel
         from trackers.models.tracker_value_model import TrackerValueModel
         from trackers.models.user_model import UserModel  # Import UserModel

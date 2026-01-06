@@ -1,4 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utc_now():
+    """Helper function to get current UTC time with timezone info."""
+    return datetime.now(timezone.utc)
+
 
 from sqlalchemy import (
     Column,
@@ -27,10 +33,8 @@ class TrackerModel(Base):
     )
 
     # Timestamp fields for tracking creation and updates
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
-    )
+    created_at = Column(DateTime, default=_utc_now, nullable=False)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
 
     # Relationships
     user = relationship("UserModel", back_populates="trackers")
@@ -41,6 +45,9 @@ class TrackerModel(Base):
         back_populates="tracker",
         cascade="all, delete-orphan",
         order_by="TrackerValueModel.date.desc()",
+    )
+    jobs = relationship(
+        "JobModel", back_populates="tracker", cascade="all, delete-orphan"
     )
 
     # Constraints and indexes - Requirements: 2.2, 2.3

@@ -33,8 +33,19 @@ from trackers import create_app
 
 @pytest.fixture
 def app():
-    # Disable API key authentication for tests by default
-    with patch.dict(os.environ, {"API_KEYS": ""}, clear=False):
+    # Disable all authentication for tests by default
+    with patch.dict(
+        os.environ,
+        {
+            "API_KEYS": "",  # Disable API key auth
+            "GOOGLE_CLIENT_ID": "",  # Disable Google OAuth
+            "GOOGLE_CLIENT_SECRET": "",  # Disable Google OAuth
+            "GOOGLE_REDIRECT_URI": "",  # Disable Google OAuth
+            "EMAIL_PASSWORD_AUTH_ENABLED": "false",  # Disable email/password auth
+            "TESTING": "true",  # Enable testing mode
+        },
+        clear=False,
+    ):
         app = create_app(
             {
                 "TESTING": True,

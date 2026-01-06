@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+
+{% block title %}Job Management - Tracker Web UI{% endblock %}
+{% block page_title %}Job Management{% endblock %}
+
+{% block nav_items %}
+{{ super() }}
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 text-white">
+    <!-- Job Management Header -->
+    <div class="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col space-y-4 sm:flex-row sm:justify-between sm:items-center sm:space-y-0 mb-6 sm:mb-8">
+                <div class="text-center sm:text-left">
+                    <h1 class="text-2xl sm:text-3xl font-bold text-white">
+                        Automated Jobs
+                    </h1>
+                    <p class="text-gray-400 mt-1 text-sm sm:text-base">Schedule and manage automated data collection jobs</p>
+                    <p class="text-gray-500 text-xs mt-1">
+                        <span id="job-count">{{ jobs|length }}</span> job{{ 's' if jobs|length != 1 else '' }} total
+                        • <span id="active-count">{{ jobs|selectattr('is_active')|list|length }}</span> active
+                        • <span id="problematic-count">0</span> need attention
+                    </p>
+                </div>
+                
+                <!-- Create New Job Button -->
+                <!-- Show button if user has access to this page (route is protected) -->
+                <button 
+                    id="create-job-btn"
+                    class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-6 py-3 text-white transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl min-touch-target focus-visible"
+                    aria-label="Create a new automated job"
+                    aria-describedby="create-job-help"
+                    data-interactive="true"
+                >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                    <span>Create New Job</span>
+                </button>
+                <div id="create-job-help" class="sr-only">Opens a form to create a new automated job for data collection</div>
+            </div>
+            
+            <!-- Job Statistics Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-blue-500 rounded-lg">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-400">Total Jobs</p>
+                            <p class="text-2xl font-semibold text-white" id="total-jobs-stat">{{ jobs|length }}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-green-500 rounded-lg">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-400">Active Jobs</p>
+                            <p class="text-2xl font-semibold text-white" id="active-jobs-stat">{{ jobs|selectattr('is_active')|list|length }}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-yellow-500 rounded-lg">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-400">Need Attention</p>
+                            <p class="text-2xl font-semibold text-white" id="attention-jobs-stat">0</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="flex items-center">
+                        <div class="p-2 bg-purple-500 rounded-lg">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-400">Last 24h Runs</p>
+                            <p class="text-2xl font-semibold text-white" id="recent-runs-stat">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Jobs Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6" 
+                 id="jobs-grid" 
+                 role="region" 
+                 aria-label="Your automated jobs"
+                 aria-describedby="jobs-description">
+                <div id="jobs-description" class="sr-only">
+                    A list of your automated jobs showing status, schedule, and recent execution information
+                </div>
+                {% if jobs %}
+                    {% for job in jobs %}
+                        {% include 'components/job_card.html' %}
+                    {% endfor %}
+                {% else %}
+                    <!-- Empty State -->
+                    <div class="col-span-full flex flex-col items-center justify-center py-12 sm:py-16 text-center px-4" 
+                         role="region" 
+                         aria-label="No jobs found">
+                        <div class="w-20 h-20 sm:w-24 sm:h-24 bg-gray-800 rounded-full flex items-center justify-center mb-4 sm:mb-6" aria-hidden="true">
+                            <svg class="w-10 h-10 sm:w-12 sm:h-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        
+                        
+                        <!-- Authenticated user with no jobs -->
+                        <h3 class="text-lg sm:text-xl font-semibold text-gray-300 mb-2">
+                            No Automated Jobs Yet
+                        </h3>
+                        <p class="text-gray-500 mb-4 sm:mb-6 max-w-md text-sm sm:text-base">
+                            Create your first automated job to start collecting data from external APIs automatically. 
+                            Support for stock prices and custom HTTP APIs.
+                        </p>
+                        <button 
+                            class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-6 py-3 text-white transition-all duration-200 min-touch-target focus-visible"
+                            onclick="document.getElementById('create-job-btn').click()"
+                            aria-label="Create your first automated job"
+                        >
+                            Create Your First Job
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Job Creation Form Modal -->
+    <div id="job-form-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden p-4" 
+         role="dialog" 
+         aria-labelledby="job-form-title" 
+         aria-describedby="job-form-description"
+         aria-modal="true"
+         aria-hidden="true">
+        <div class="bg-gray-800 rounded-xl p-4 sm:p-6 w-full max-w-2xl shadow-2xl max-h-screen overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 sm:mb-6">
+                <div>
+                    <h2 id="job-form-title" class="text-lg sm:text-xl font-semibold text-white">Create New Job</h2>
+                    <p id="job-form-description" class="text-sm text-gray-400 mt-1">Set up automated data collection from external APIs</p>
+                </div>
+                <button 
+                    id="close-job-form-btn"
+                    class="text-gray-400 hover:text-white transition-colors p-1 min-touch-target focus-visible"
+                    aria-label="Close job form dialog"
+                    type="button"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Job Form will be included here -->
+            {% include 'components/job_form.html' %}
+        </div>
+    </div>
+    
+    <!-- Job Details Modal -->
+    <div id="job-details-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden p-4" 
+         role="dialog" 
+         aria-labelledby="job-details-title" 
+         aria-describedby="job-details-description"
+         aria-modal="true"
+         aria-hidden="true">
+        <div class="bg-gray-800 rounded-xl p-4 sm:p-6 w-full max-w-4xl shadow-2xl max-h-screen overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 sm:mb-6">
+                <div>
+                    <h2 id="job-details-title" class="text-lg sm:text-xl font-semibold text-white">Job Details</h2>
+                    <p id="job-details-description" class="text-sm text-gray-400 mt-1">View job configuration and execution history</p>
+                </div>
+                <button 
+                    id="close-job-details-btn"
+                    class="text-gray-400 hover:text-white transition-colors p-1 min-touch-target focus-visible"
+                    aria-label="Close job details dialog"
+                    type="button"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Job Details Content -->
+            <div id="job-details-content">
+                <!-- Content will be loaded dynamically -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const createBtn = document.getElementById('create-job-btn');
+    const formModal = document.getElementById('job-form-modal');
+    const closeFormBtn = document.getElementById('close-job-form-btn');
+    const detailsModal = document.getElementById('job-details-modal');
+    const closeDetailsBtn = document.getElementById('close-job-details-btn');
+    
+    // Job form modal functionality
+    if (createBtn && formModal && closeFormBtn) {
+        // Show form modal
+        createBtn.addEventListener('click', function() {
+            formModal.classList.remove('hidden');
+            formModal.setAttribute('aria-hidden', 'false');
+            
+            // Initialize job form handler if available
+            if (window.initializeJobFormHandler) {
+                window.initializeJobFormHandler();
+            }
+            
+            // Focus first input in form
+            const firstInput = formModal.querySelector('input, select');
+            if (firstInput) {
+                setTimeout(() => firstInput.focus(), 200);
+            }
+        });
+        
+        // Hide form modal
+        function hideJobForm() {
+            formModal.classList.add('hidden');
+            formModal.setAttribute('aria-hidden', 'true');
+            createBtn.focus(); // Return focus to trigger button
+        }
+        
+        closeFormBtn.addEventListener('click', hideJobForm);
+        
+        // Close on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !formModal.classList.contains('hidden')) {
+                hideJobForm();
+            }
+        });
+        
+        // Close on backdrop click
+        formModal.addEventListener('click', function(e) {
+            if (e.target === formModal) {
+                hideJobForm();
+            }
+        });
+        
+        // Make hideJobForm globally available
+        window.hideJobForm = hideJobForm;
+    }
+    
+    // Job details modal functionality
+    if (detailsModal && closeDetailsBtn) {
+        // Hide details modal
+        function hideJobDetails() {
+            detailsModal.classList.add('hidden');
+            detailsModal.setAttribute('aria-hidden', 'true');
+        }
+        
+        closeDetailsBtn.addEventListener('click', hideJobDetails);
+        
+        // Close on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !detailsModal.classList.contains('hidden')) {
+                hideJobDetails();
+            }
+        });
+        
+        // Close on backdrop click
+        detailsModal.addEventListener('click', function(e) {
+            if (e.target === detailsModal) {
+                hideJobDetails();
+            }
+        });
+        
+        // Make functions globally available
+        window.hideJobDetails = hideJobDetails;
+    }
+    
+    // Check for tracker_id in URL parameters and auto-open form
+    const params = new URLSearchParams(window.location.search);
+    const trackerId = params.get('tracker_id');
+    
+    if (trackerId) {
+        // Auto-open form with pre-selected tracker
+        setTimeout(() => {
+            window.showJobForm(trackerId);
+        }, 500); // Small delay to ensure DOM is ready
+    }
+    
+    // Load job statistics
+    loadJobStatistics();
+    
+    // Refresh job list every 30 seconds
+    setInterval(refreshJobList, 30000);
+});
+
+// Global function to show job form with optional pre-selected tracker
+window.showJobForm = function(trackerId) {
+    const formModal = document.getElementById('job-form-modal');
+    
+    if (!formModal) {
+        console.error('Job form modal not found');
+        return;
+    }
+    
+    // Show the modal
+    formModal.classList.remove('hidden');
+    formModal.setAttribute('aria-hidden', 'false');
+    
+    // Initialize job form handler if available
+    if (window.initializeJobFormHandler) {
+        window.initializeJobFormHandler();
+    }
+    
+    // Pre-select tracker if provided
+    if (trackerId) {
+        // Wait a bit for the form to initialize
+        setTimeout(() => {
+            // Re-initialize with pre-selected tracker
+            if (window.jobFormHandler && window.jobFormHandler.init) {
+                window.jobFormHandler.init(trackerId);
+            }
+        }, 200);
+    }
+    
+    // Focus first input in form
+    const firstInput = formModal.querySelector('input, select');
+    if (firstInput) {
+        setTimeout(() => firstInput.focus(), 300);
+    }
+};
+
+// Load job statistics
+async function loadJobStatistics() {
+    try {
+        const response = await fetch('/api/jobs/statistics');
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const stats = data.statistics;
+        
+        // Update statistics display
+        if (stats) {
+            document.getElementById('total-jobs-stat').textContent = stats.total_jobs || 0;
+            document.getElementById('active-jobs-stat').textContent = stats.active_jobs || 0;
+            document.getElementById('attention-jobs-stat').textContent = stats.problematic_jobs || 0;
+            document.getElementById('recent-runs-stat').textContent = stats.executions_last_24h || 0;
+        }
+        
+    } catch (error) {
+        console.error('Error loading job statistics:', error);
+    }
+}
+
+// Refresh job list
+async function refreshJobList() {
+    try {
+        const response = await fetch('/web/jobs/data');
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        // Update job cards in the grid
+        // This would require more complex DOM manipulation
+        
+    } catch (error) {
+        console.error('Error refreshing job list:', error);
+    }
+}
+</script>
+
+<!-- Job Management JavaScript -->
+<script src="{{ url_for('static', filename='js/jobs.js') }}"></script>
+{% endblock %}

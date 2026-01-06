@@ -1332,6 +1332,26 @@ class MigrationEngine:
                                     result.message += (
                                         " (Email/password migration failed)"
                                     )
+
+                                # Run job migration after email/password migration
+                                # Requirements: 9.1, 9.2, 9.3
+                                if email_password_success:
+                                    job_migration_success = self._run_job_migration()
+                                    if not job_migration_success:
+                                        result.success = False
+                                        result.errors.append("Job migration failed")
+                                        result.message += " (Job migration failed)"
+
+                            # Always run job migration to ensure permissions are granted
+                            # even if user migration was not needed
+                            # Requirements: 9.1, 9.2, 9.3
+                            if not hasattr(self, "_job_migration_run"):
+                                job_migration_success = self._run_job_migration()
+                                self._job_migration_run = True
+                                if not job_migration_success:
+                                    result.success = False
+                                    result.errors.append("Job migration failed")
+                                    result.message += " (Job migration failed)"
                         else:
                             # Skip user migration if users table not in metadata
                             self.migration_logger.logger.info(
@@ -1625,6 +1645,76 @@ class MigrationEngine:
                 duration_seconds=0.0,
                 message=f"User migration integration failed: {e}",
             )
+
+    def _run_job_migration(self) -> bool:
+        """
+        Run job migration as part of the main migration process.
+
+        This method integrates job migration functionality directly into the
+        main migration engine, creating job tables and relationships.
+
+        Returns:
+            True if migration was successful, False otherwise
+
+        Requirements: 9.1, 9.2, 9.3
+        """
+        try:
+            # Import JobMigration here to avoid circular imports
+            from .job_migration import JobMigration
+
+            self.migration_logger.log_migration_phase(
+                "Job Migration",
+                "Starting job scheduling system migration",
+            )
+
+            # Create job migration instance
+            job_migration = JobMigration(
+                engine=self.engine,
+                metadata=self.metadata,
+                logger=self.logger,
+            )
+
+            # Check if migration is needed
+            migration_needed = job_migration.is_migration_needed()
+            if not migration_needed:
+                self.migration_logger.logger.info(
+                    "Job migration not needed - tables exist, verifying permissions"
+                )
+                # Still run migration to ensure permissions are granted
+                result = job_migration.apply_migration()
+                return result.success
+            else:
+                self.migration_logger.logger.info(
+                    "Job migration needed - creating tables and setting permissions"
+                )
+
+            # Run job migration
+            result = job_migration.apply_migration()
+
+            # Log migration results
+            if result.success:
+                self.migration_logger.logger.info(
+                    f"✓ Job migration completed successfully in {result.duration_seconds:.2f}s"
+                )
+                if result.jobs_table_created:
+                    self.migration_logger.logger.info("✓ Created jobs table")
+                if result.job_execution_logs_table_created:
+                    self.migration_logger.logger.info(
+                        "✓ Created job execution logs table"
+                    )
+            else:
+                self.migration_logger.logger.error(
+                    f"✗ Job migration failed: {result.message}"
+                )
+                for error in result.errors:
+                    self.migration_logger.logger.error(f"  - {error}")
+
+            return result.success
+
+        except Exception as e:
+            # Handle job migration errors gracefully
+            self.migration_logger.log_error(e, "job migration integration")
+            return False
 
     def _run_email_password_migration(self) -> bool:
         """

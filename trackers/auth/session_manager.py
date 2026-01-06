@@ -107,13 +107,26 @@ class UserSession:
                 verified_email=user_info_data.get("verified_email", False),
             )
 
-            # Parse datetime fields
-            token_expires_at = datetime.fromisoformat(data["token_expires_at"])
-            session_created_at = datetime.fromisoformat(data["session_created_at"])
+            # Handle legacy session format that might not have all fields
+            # For backward compatibility with existing sessions
+            access_token = data.get("access_token", "legacy_session_token")
+
+            # Parse datetime fields with fallbacks for legacy sessions
+            if "token_expires_at" in data:
+                token_expires_at = datetime.fromisoformat(data["token_expires_at"])
+            else:
+                # For legacy sessions, set a reasonable expiration (24 hours from now)
+                token_expires_at = datetime.utcnow() + timedelta(hours=24)
+
+            if "session_created_at" in data:
+                session_created_at = datetime.fromisoformat(data["session_created_at"])
+            else:
+                # For legacy sessions, assume created now (will be updated on next login)
+                session_created_at = datetime.utcnow()
 
             return cls(
                 user_info=user_info,
-                access_token=data["access_token"],
+                access_token=access_token,
                 token_expires_at=token_expires_at,
                 session_created_at=session_created_at,
             )

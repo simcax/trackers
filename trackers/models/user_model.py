@@ -7,7 +7,13 @@ from multiple authentication methods including Google OAuth and email/password.
 Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 7.1, 7.2, 7.3, 7.4, 7.5
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utc_now():
+    """Helper function to get current UTC time with timezone info."""
+    return datetime.now(timezone.utc)
+
 
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String
 from sqlalchemy.orm import relationship
@@ -50,10 +56,8 @@ class UserModel(Base):
     )  # Comma-separated: 'google,password'
 
     # Timestamp fields - Requirements: 1.3, 1.4
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
-    )
+    created_at = Column(DateTime, default=_utc_now, nullable=False)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
 
     # Relationships - Requirements: 2.1, 2.2
@@ -63,6 +67,7 @@ class UserModel(Base):
     api_keys = relationship(
         "APIKeyModel", back_populates="user", cascade="all, delete-orphan"
     )
+    jobs = relationship("JobModel", back_populates="user", cascade="all, delete-orphan")
 
     # Indexes for performance - Requirements: 7.5
     __table_args__ = (
@@ -85,7 +90,7 @@ class UserModel(Base):
 
         Requirements: 1.4, 5.5
         """
-        self.last_login_at = datetime.utcnow()
+        self.last_login_at = datetime.now(timezone.utc)
 
     def has_google_auth(self) -> bool:
         """
@@ -145,7 +150,7 @@ class UserModel(Base):
         """
         if self.locked_until is None:
             return False
-        return datetime.utcnow() < self.locked_until
+        return datetime.now(timezone.utc) < self.locked_until
 
     def increment_failed_attempts(self) -> None:
         """
@@ -175,7 +180,9 @@ class UserModel(Base):
         """
         from datetime import timedelta
 
-        self.locked_until = datetime.utcnow() + timedelta(minutes=duration_minutes)
+        self.locked_until = datetime.now(timezone.utc) + timedelta(
+            minutes=duration_minutes
+        )
 
     def update_password_changed_timestamp(self) -> None:
         """
@@ -183,7 +190,7 @@ class UserModel(Base):
 
         Requirements: 7.1 - Password management tracking
         """
-        self.password_changed_at = datetime.utcnow()
+        self.password_changed_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> dict:
         """

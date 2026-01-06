@@ -1,0 +1,298 @@
+<!-- Job Card Component -->
+<div class="bg-gray-800 rounded-xl p-4 sm:p-6 border border-gray-700 hover:border-gray-600 transition-all duration-200 shadow-lg hover:shadow-xl job-card" 
+     data-job-id="{{ job.id }}"
+     role="article" 
+     aria-labelledby="job-{{ job.id }}-title"
+     aria-describedby="job-{{ job.id }}-description">
+    
+    <!-- Job Header -->
+    <div class="flex justify-between items-start mb-4">
+        <div class="flex-1 min-w-0">
+            <h3 id="job-{{ job.id }}-title" class="text-lg font-semibold text-white truncate">
+                {{ job.name }}
+            </h3>
+            <div class="flex items-center space-x-2 mt-1">
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                    {% if job.job_type == 'stock' %}bg-blue-100 text-blue-800{% else %}bg-purple-100 text-purple-800{% endif %}">
+                    {% if job.job_type == 'stock' %}
+                        📈 Stock
+                    {% else %}
+                        🔗 Generic
+                    {% endif %}
+                </span>
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                    {% if job.is_active %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {% if job.is_active %}
+                        ● Active
+                    {% else %}
+                        ○ Inactive
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+        
+        <!-- Job Actions Dropdown -->
+        <div class="relative ml-4" data-dropdown>
+            <button 
+                type="button" 
+                class="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 min-touch-target"
+                data-dropdown-toggle="job-{{ job.id }}-menu"
+                aria-expanded="false"
+                aria-haspopup="true"
+                aria-label="Job actions for {{ job.name }}"
+            >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
+                </svg>
+            </button>
+            
+            <!-- Dropdown Menu -->
+            <div 
+                id="job-{{ job.id }}-menu" 
+                class="hidden absolute right-0 mt-2 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-50"
+                role="menu"
+                aria-orientation="vertical"
+            >
+                <div class="py-1">
+                    <button 
+                        data-job-action="view-details"
+                        data-job-id="{{ job.id }}"
+                        class="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-600 transition-colors focus:outline-none focus:bg-gray-600 min-touch-target"
+                        role="menuitem">
+                        <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        View Details
+                    </button>
+                    <button 
+                        data-job-action="test-job"
+                        data-job-id="{{ job.id }}"
+                        class="flex items-center w-full px-4 py-2 text-sm text-blue-300 hover:text-blue-200 hover:bg-gray-600 transition-colors focus:outline-none focus:bg-gray-600 min-touch-target"
+                        role="menuitem">
+                        <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"></path>
+                        </svg>
+                        Run Now
+                    </button>
+                    <button 
+                        data-job-action="edit-job"
+                        data-job-id="{{ job.id }}"
+                        class="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-600 transition-colors focus:outline-none focus:bg-gray-600 min-touch-target"
+                        role="menuitem">
+                        <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                        </svg>
+                        Edit Job
+                    </button>
+                    <div class="border-t border-gray-600 my-1"></div>
+                    <button 
+                        data-job-action="toggle-status"
+                        data-job-id="{{ job.id }}"
+                        data-new-status="{{ 'false' if job.is_active else 'true' }}"
+                        class="flex items-center w-full px-4 py-2 text-sm {% if job.is_active %}text-yellow-300 hover:text-yellow-200{% else %}text-green-300 hover:text-green-200{% endif %} hover:bg-gray-600 transition-colors focus:outline-none focus:bg-gray-600 min-touch-target"
+                        role="menuitem">
+                        {% if job.is_active %}
+                            <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            Disable Job
+                        {% else %}
+                            <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.01M15 10h1.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            Enable Job
+                        {% endif %}
+                    </button>
+                    <button 
+                        data-job-action="delete-job"
+                        data-job-id="{{ job.id }}"
+                        data-job-name="{{ job.name }}"
+                        class="flex items-center w-full px-4 py-2 text-sm text-red-300 hover:text-red-200 hover:bg-gray-600 transition-colors focus:outline-none focus:bg-gray-600 min-touch-target"
+                        role="menuitem">
+                        <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                        Delete Job
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Job Description -->
+    <div id="job-{{ job.id }}-description" class="mb-4">
+        <div class="text-sm text-gray-400 space-y-1">
+            <div class="flex items-center">
+                <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="font-mono text-xs">{{ job.cron_schedule }}</span>
+            </div>
+            <div class="flex items-center">
+                <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                <span>Tracker: </span>
+                <button 
+                    class="text-blue-400 hover:text-blue-300 underline ml-1 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                    data-action="view-tracker"
+                    data-tracker-id="{{ job.tracker_id }}"
+                    data-job-id="{{ job.id }}"
+                    aria-label="View tracker for this job"
+                    title="Click to view the tracker that receives data from this job"
+                >
+                    <span id="tracker-name-{{ job.id }}">Loading...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Job Status Information -->
+    <div class="space-y-3">
+        <!-- Last Execution -->
+        <div class="flex justify-between items-center text-sm">
+            <span class="text-gray-400">Last Run:</span>
+            <span class="text-gray-300">
+                {% if job.last_run_at %}
+                    {{ job.last_run_at.strftime('%m/%d %H:%M') if job.last_run_at else 'Never' }}
+                {% else %}
+                    Never
+                {% endif %}
+            </span>
+        </div>
+        
+        <!-- Success Status -->
+        <div class="flex justify-between items-center text-sm">
+            <span class="text-gray-400">Last Success:</span>
+            <span class="{% if job.last_success_at %}text-green-400{% else %}text-gray-500{% endif %}">
+                {% if job.last_success_at %}
+                    {{ job.last_success_at.strftime('%m/%d %H:%M') }}
+                {% else %}
+                    None
+                {% endif %}
+            </span>
+        </div>
+        
+        <!-- Failure Count -->
+        {% if job.failure_count > 0 %}
+        <div class="flex justify-between items-center text-sm">
+            <span class="text-gray-400">Failures:</span>
+            <span class="text-red-400 font-medium">{{ job.failure_count }} consecutive</span>
+        </div>
+        {% endif %}
+        
+        <!-- Error Message -->
+        {% if job.last_error %}
+        <div class="mt-2 p-2 bg-red-900 border border-red-700 rounded text-xs">
+            <p class="text-red-300 font-medium">Last Error:</p>
+            <p class="text-red-400 mt-1 truncate" title="{{ job.last_error }}">{{ job.last_error }}</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="mt-4 pt-4 border-t border-gray-700">
+        <div class="flex space-x-2">
+            <button 
+                data-job-action="view-details"
+                data-job-id="{{ job.id }}"
+                class="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-sm py-2 px-3 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 min-touch-target"
+                aria-label="View details for {{ job.name }}"
+            >
+                View Details
+            </button>
+            <button 
+                data-job-action="test-job"
+                data-job-id="{{ job.id }}"
+                class="bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 min-touch-target flex items-center space-x-1"
+                aria-label="Run {{ job.name }} job now"
+                title="Execute this job immediately"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.01M15 10h1.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span>Run Now</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Job card specific functionality - simplified to avoid conflicts with JobManager
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize dropdown for this job card
+    const jobId = {{ job.id }};
+    const dropdownButton = document.querySelector(`[data-dropdown-toggle="job-${jobId}-menu"]`);
+    const dropdownMenu = document.getElementById(`job-${jobId}-menu`);
+    
+    if (dropdownButton && dropdownMenu) {
+        console.log(`Initializing dropdown for job ${jobId}`);
+        
+        // Toggle dropdown on button click
+        dropdownButton.addEventListener('click', function(e) {
+            console.log(`Dropdown button clicked for job ${jobId}`);
+            e.stopPropagation();
+            const isHidden = dropdownMenu.classList.contains('hidden');
+            
+            // Close all other dropdowns first
+            document.querySelectorAll('[id$="-menu"]').forEach(menu => {
+                if (menu !== dropdownMenu) {
+                    menu.classList.add('hidden');
+                    const button = document.querySelector(`[data-dropdown-toggle="${menu.id}"]`);
+                    if (button) button.setAttribute('aria-expanded', 'false');
+                }
+            });
+            
+            if (isHidden) {
+                dropdownMenu.classList.remove('hidden');
+                dropdownButton.setAttribute('aria-expanded', 'true');
+                console.log(`Dropdown opened for job ${jobId}`);
+            } else {
+                dropdownMenu.classList.add('hidden');
+                dropdownButton.setAttribute('aria-expanded', 'false');
+                console.log(`Dropdown closed for job ${jobId}`);
+            }
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!dropdownButton.contains(e.target) && !dropdownMenu.contains(e.target)) {
+                dropdownMenu.classList.add('hidden');
+                dropdownButton.setAttribute('aria-expanded', 'false');
+            }
+        });
+    } else {
+        console.warn(`Dropdown elements not found for job ${jobId}`);
+    }
+    
+    // Load tracker name for this job
+    loadTrackerNameForJob(jobId);
+});
+
+// Function to load tracker name for a job
+async function loadTrackerNameForJob(jobId) {
+    try {
+        const response = await fetch(`/web/jobs/${jobId}/tracker`);
+        if (response.ok) {
+            const data = await response.json();
+            const trackerNameElement = document.getElementById(`tracker-name-${jobId}`);
+            if (trackerNameElement && data.tracker) {
+                trackerNameElement.textContent = data.tracker.name;
+                trackerNameElement.setAttribute('title', `${data.tracker.name} (ID: ${data.tracker.id})`);
+            }
+        } else {
+            console.warn(`Failed to load tracker name for job ${jobId}`);
+            const trackerNameElement = document.getElementById(`tracker-name-${jobId}`);
+            if (trackerNameElement) {
+                trackerNameElement.textContent = `Tracker ID: {{ job.tracker_id }}`;
+            }
+        }
+    } catch (error) {
+        console.error(`Error loading tracker name for job ${jobId}:`, error);
+        const trackerNameElement = document.getElementById(`tracker-name-${jobId}`);
+        if (trackerNameElement) {
+            trackerNameElement.textContent = `Tracker ID: {{ job.tracker_id }}`;
+        }
+    }
+}
+</script>

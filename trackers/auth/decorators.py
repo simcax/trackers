@@ -162,25 +162,52 @@ def require_auth(
 
                     return f(*args, **kwargs)
 
-                # Check API key authentication if enabled
-                api_key_valid = False
-                api_key_user_info = None
-                if api_key_enabled:
-                    api_key_valid, api_key_user_info = _check_api_key_auth()
+                # For browser requests (no Authorization header), prioritize session-based auth
+                # For API requests (with Authorization header), prioritize API key auth
+                has_auth_header = request.headers.get("Authorization") is not None
 
-                # Check Google OAuth authentication if enabled
+                # Check session-based authentication first for browser requests
                 google_oauth_valid = False
                 google_user_info = None
-                if google_oauth_enabled:
-                    google_oauth_valid, google_user_info = _check_google_oauth_auth()
-
-                # Check email/password authentication if enabled
                 email_password_valid = False
                 email_password_user_info = None
-                if email_password_enabled:
-                    email_password_valid, email_password_user_info = (
-                        _check_email_password_auth()
-                    )
+
+                if not has_auth_header:
+                    # Browser request - check session auth first
+                    if google_oauth_enabled:
+                        google_oauth_valid, google_user_info = (
+                            _check_google_oauth_auth()
+                        )
+
+                    if email_password_enabled and not google_oauth_valid:
+                        email_password_valid, email_password_user_info = (
+                            _check_email_password_auth()
+                        )
+
+                # Check API key authentication (for API requests or as fallback)
+                api_key_valid = False
+                api_key_user_info = None
+                if api_key_enabled and (
+                    has_auth_header
+                    or (not google_oauth_valid and not email_password_valid)
+                ):
+                    api_key_valid, api_key_user_info = _check_api_key_auth()
+
+                # For API requests with Authorization header, check session auth as secondary
+                if has_auth_header:
+                    if google_oauth_enabled and not api_key_valid:
+                        google_oauth_valid, google_user_info = (
+                            _check_google_oauth_auth()
+                        )
+
+                    if (
+                        email_password_enabled
+                        and not api_key_valid
+                        and not google_oauth_valid
+                    ):
+                        email_password_valid, email_password_user_info = (
+                            _check_email_password_auth()
+                        )
 
                 # Determine authentication status and method
                 auth_methods = []
@@ -495,15 +522,15 @@ def _check_api_key_auth() -> tuple[bool, Optional[dict]]:
         if not hasattr(current_app, "security_config"):
             return False, None
 
-        current_route = request.path
-        if not current_app.security_config.is_route_protected(current_route):
-            # Route is public for API key system, consider it valid
-            return True, None
+        # Extract Authorization header - if not present, this is not an API key request
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            # No Authorization header means this is not an API key request
+            return False, None
 
-        # Extract and validate Authorization header
+        # Validate Authorization header format and extract API key
         from trackers.security.api_key_auth import validate_authorization_header
 
-        auth_header = request.headers.get("Authorization")
         is_valid, api_key, error_message = validate_authorization_header(auth_header)
 
         if not is_valid:

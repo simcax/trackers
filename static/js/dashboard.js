@@ -42,6 +42,8 @@ class TrackerDashboard {
         this.setupValueBadges();
         this.setupKeyboardNavigation();
         this.setupTooltips();
+        this.setupJobButtons();
+        this.setupTrackerJobNavigation();
         this.initializeCharts();
         
         console.log('TrackerDashboard: Interactive features initialized');
@@ -211,6 +213,76 @@ class TrackerDashboard {
     }
     
     /**
+     * Set up job-related buttons (view jobs, create job)
+     */
+    setupJobButtons() {
+        // Set up "View Jobs" buttons
+        const viewJobsButtons = document.querySelectorAll('[data-action="view-jobs"]');
+        viewJobsButtons.forEach(button => {
+            button.addEventListener('click', (e) => this.handleViewJobs(e));
+            button.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.handleViewJobs(e);
+                }
+            });
+        });
+        
+        // Set up "Create Job" buttons
+        const createJobButtons = document.querySelectorAll('[data-action="create-job"]');
+        createJobButtons.forEach(button => {
+            button.addEventListener('click', (e) => this.handleCreateJob(e));
+            button.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.handleCreateJob(e);
+                }
+            });
+        });
+        
+        // Set up "Edit Tracker" buttons
+        const editTrackerButtons = document.querySelectorAll('[data-action="edit-tracker"]');
+        editTrackerButtons.forEach(button => {
+            button.addEventListener('click', (e) => this.handleEditTracker(e));
+            button.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.handleEditTracker(e);
+                }
+            });
+        });
+        
+        // Set up "Delete Tracker" buttons
+        const deleteTrackerButtons = document.querySelectorAll('[data-action="delete-tracker"]');
+        deleteTrackerButtons.forEach(button => {
+            button.addEventListener('click', (e) => this.handleDeleteTracker(e));
+            button.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.handleDeleteTracker(e);
+                }
+            });
+        });
+    }
+    
+    /**
+     * Set up tracker navigation from job cards
+     */
+    setupTrackerJobNavigation() {
+        // Set up "View Tracker" buttons in job cards
+        const viewTrackerButtons = document.querySelectorAll('[data-action="view-tracker"]');
+        viewTrackerButtons.forEach(button => {
+            button.addEventListener('click', (e) => this.handleViewTracker(e));
+            button.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.handleViewTracker(e);
+                }
+            });
+        });
+    }
+    
+    /**
      * Handle "Add Today's Value" button clicks
      * @param {Event} event - Click event
      */
@@ -325,6 +397,228 @@ class TrackerDashboard {
         
         // Show detailed value information
         this.showValueDetailsModal(value, daysAgo, date);
+    }
+    
+    /**
+     * Handle "View Jobs" button clicks
+     * @param {Event} event - Click event
+     */
+    async handleViewJobs(event) {
+        event.preventDefault();
+        
+        const button = event.currentTarget;
+        const trackerId = button.dataset.trackerId;
+        const trackerName = button.dataset.trackerName;
+        
+        if (!trackerId) {
+            this.showToast('Error: Tracker ID not found', 'error');
+            return;
+        }
+        
+        if (this.isButtonLoading(button)) {
+            return; // Prevent double-clicks
+        }
+        
+        try {
+            this.setButtonLoading(button, true);
+            
+            // Fetch jobs for this tracker
+            const response = await fetch(`/web/trackers/${trackerId}/jobs`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            // Show jobs modal
+            this.showJobsModal(trackerName, data.jobs);
+            
+        } catch (error) {
+            console.error('Error loading jobs:', error);
+            this.showToast('Failed to load jobs for this tracker', 'error');
+        } finally {
+            this.setButtonLoading(button, false);
+        }
+    }
+    
+    /**
+     * Handle "Create Job" button clicks
+     * @param {Event} event - Click event
+     */
+    async handleCreateJob(event) {
+        event.preventDefault();
+        
+        const button = event.currentTarget;
+        const trackerId = button.dataset.trackerId;
+        const trackerName = button.dataset.trackerName;
+        
+        if (!trackerId) {
+            this.showToast('Error: Tracker ID not found', 'error');
+            return;
+        }
+        
+        // Navigate to jobs page with pre-selected tracker
+        if (window.showJobForm) {
+            window.showJobForm(trackerId);
+        } else {
+            // Fallback: navigate to jobs page
+            window.location.href = `/web/jobs?tracker_id=${trackerId}`;
+        }
+    }
+    
+    /**
+     * Handle "View Tracker" button clicks from job cards
+     * @param {Event} event - Click event
+     */
+    async handleViewTracker(event) {
+        event.preventDefault();
+        
+        const button = event.currentTarget;
+        const trackerId = button.dataset.trackerId;
+        const jobId = button.dataset.jobId;
+        
+        if (!trackerId) {
+            this.showToast('Error: Tracker ID not found', 'error');
+            return;
+        }
+        
+        // Navigate to dashboard and highlight the tracker
+        if (window.location.pathname === '/web/trackers' || window.location.pathname === '/') {
+            // Already on dashboard, just scroll to tracker
+            this.scrollToTracker(trackerId);
+        } else {
+            // Navigate to dashboard with tracker highlight
+            window.location.href = `/?highlight=${trackerId}`;
+        }
+    }
+    
+    /**
+     * Handle "Edit Tracker" button clicks
+     * @param {Event} event - Click event
+     */
+    async handleEditTracker(event) {
+        event.preventDefault();
+        
+        const button = event.currentTarget;
+        const trackerId = button.dataset.trackerId;
+        const trackerName = button.dataset.trackerName;
+        const trackerDescription = button.dataset.trackerDescription || '';
+        
+        if (!trackerId) {
+            this.showToast('Error: Tracker ID not found', 'error');
+            return;
+        }
+        
+        if (this.isButtonLoading(button)) {
+            return; // Prevent double-clicks
+        }
+        
+        try {
+            // Show edit modal and get updated values
+            const result = await this.showTrackerEditModal(trackerName, trackerDescription);
+            
+            if (!result) {
+                return; // User cancelled
+            }
+            
+            this.setButtonLoading(button, true);
+            
+            // Update tracker via API
+            const response = await fetch(`${this.webBaseUrl}/tracker/${trackerId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: result.name,
+                    description: result.description
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            // Show success message
+            this.showToast(`Tracker "${data.tracker.name}" updated successfully`, 'success');
+            
+            // Refresh the page to show updated tracker
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Error updating tracker:', error);
+            this.showToast(`Failed to update tracker: ${error.message}`, 'error');
+        } finally {
+            this.setButtonLoading(button, false);
+        }
+    }
+    
+    /**
+     * Handle "Delete Tracker" button clicks
+     * @param {Event} event - Click event
+     */
+    async handleDeleteTracker(event) {
+        event.preventDefault();
+        
+        const button = event.currentTarget;
+        const trackerId = button.dataset.trackerId;
+        const trackerName = button.dataset.trackerName;
+        
+        if (!trackerId) {
+            this.showToast('Error: Tracker ID not found', 'error');
+            return;
+        }
+        
+        if (this.isButtonLoading(button)) {
+            return; // Prevent double-clicks
+        }
+        
+        try {
+            // Show confirmation dialog
+            const confirmed = await this.showDeleteConfirmationModal(trackerName);
+            
+            if (!confirmed) {
+                return; // User cancelled
+            }
+            
+            this.setButtonLoading(button, true);
+            
+            // Delete tracker via API
+            const response = await fetch(`${this.webBaseUrl}/tracker/${trackerId}`, {
+                method: 'DELETE'
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            // Show success message
+            this.showToast(`Tracker "${trackerName}" deleted successfully`, 'success');
+            
+            // Remove the tracker card from the DOM
+            const trackerCard = button.closest('article');
+            if (trackerCard) {
+                trackerCard.style.transition = 'all 0.3s ease-out';
+                trackerCard.style.transform = 'scale(0.95)';
+                trackerCard.style.opacity = '0';
+                
+                setTimeout(() => {
+                    trackerCard.remove();
+                }, 300);
+            }
+            
+        } catch (error) {
+            console.error('Error deleting tracker:', error);
+            this.showToast(`Failed to delete tracker: ${error.message}`, 'error');
+        } finally {
+            this.setButtonLoading(button, false);
+        }
     }
     
     /**
@@ -603,6 +897,412 @@ class TrackerDashboard {
         
         // Auto-close after 3 seconds
         setTimeout(handleClose, 3000);
+    }
+    
+    /**
+     * Show tracker edit modal
+     * @param {string} currentName - Current tracker name
+     * @param {string} currentDescription - Current tracker description
+     * @returns {Promise<Object|null>} - Updated name and description or null if cancelled
+     */
+    showTrackerEditModal(currentName, currentDescription) {
+        return new Promise((resolve) => {
+            const modalHtml = `
+                <div id="tracker-edit-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                    <div class="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+                        <h3 class="text-lg font-semibold text-white mb-4">Edit Tracker</h3>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Name:</label>
+                                <input 
+                                    type="text" 
+                                    id="tracker-name-input" 
+                                    value="${currentName}"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="Enter tracker name"
+                                    maxlength="100"
+                                    required
+                                >
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Description:</label>
+                                <textarea 
+                                    id="tracker-description-input" 
+                                    class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                    placeholder="Enter tracker description (optional)"
+                                    rows="3"
+                                    maxlength="500"
+                                >${currentDescription}</textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="flex space-x-3 mt-6">
+                            <button 
+                                id="save-tracker-btn" 
+                                class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 px-4 rounded-lg text-white font-medium transition-colors focus:ring-2 focus:ring-blue-500"
+                            >
+                                Save Changes
+                            </button>
+                            <button 
+                                id="cancel-tracker-btn" 
+                                class="flex-1 bg-gray-600 hover:bg-gray-700 py-2 px-4 rounded-lg text-white font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add modal to page
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            const modal = document.getElementById('tracker-edit-modal');
+            const nameInput = document.getElementById('tracker-name-input');
+            const descriptionInput = document.getElementById('tracker-description-input');
+            const saveBtn = document.getElementById('save-tracker-btn');
+            const cancelBtn = document.getElementById('cancel-tracker-btn');
+            
+            // Focus name input
+            setTimeout(() => nameInput.focus(), 100);
+            
+            // Handle save
+            const handleSave = () => {
+                const name = nameInput.value.trim();
+                const description = descriptionInput.value.trim();
+                
+                if (!name) {
+                    nameInput.focus();
+                    return;
+                }
+                
+                this.removeModal(modal);
+                resolve({ name, description });
+            };
+            
+            // Handle cancel
+            const handleCancel = () => {
+                this.removeModal(modal);
+                resolve(null);
+            };
+            
+            // Event listeners
+            saveBtn.addEventListener('click', handleSave);
+            cancelBtn.addEventListener('click', handleCancel);
+            
+            // Handle Enter key
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSave();
+                }
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancel();
+                }
+            });
+            
+            descriptionInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancel();
+                }
+            });
+            
+            // Handle click outside modal
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    handleCancel();
+                }
+            });
+        });
+    }
+    
+    /**
+     * Show delete confirmation modal
+     * @param {string} trackerName - Name of the tracker to delete
+     * @returns {Promise<boolean>} - True if confirmed, false if cancelled
+     */
+    showDeleteConfirmationModal(trackerName) {
+        return new Promise((resolve) => {
+            const modalHtml = `
+                <div id="delete-confirmation-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                    <div class="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+                        <div class="flex items-center space-x-3 mb-4">
+                            <div class="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-lg font-semibold text-white">Delete Tracker</h3>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <p class="text-gray-300">
+                                Are you sure you want to delete the tracker <strong class="text-white">"${trackerName}"</strong>?
+                            </p>
+                            <p class="text-red-400 text-sm mt-2">
+                                This action cannot be undone. All associated values and jobs will also be deleted.
+                            </p>
+                        </div>
+                        
+                        <div class="flex space-x-3">
+                            <button 
+                                id="confirm-delete-btn" 
+                                class="flex-1 bg-red-600 hover:bg-red-700 py-2 px-4 rounded-lg text-white font-medium transition-colors focus:ring-2 focus:ring-red-500"
+                            >
+                                Delete Tracker
+                            </button>
+                            <button 
+                                id="cancel-delete-btn" 
+                                class="flex-1 bg-gray-600 hover:bg-gray-700 py-2 px-4 rounded-lg text-white font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add modal to page
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            const modal = document.getElementById('delete-confirmation-modal');
+            const confirmBtn = document.getElementById('confirm-delete-btn');
+            const cancelBtn = document.getElementById('cancel-delete-btn');
+            
+            // Focus cancel button by default for safety
+            setTimeout(() => cancelBtn.focus(), 100);
+            
+            // Handle confirm
+            const handleConfirm = () => {
+                this.removeModal(modal);
+                resolve(true);
+            };
+            
+            // Handle cancel
+            const handleCancel = () => {
+                this.removeModal(modal);
+                resolve(false);
+            };
+            
+            // Event listeners
+            confirmBtn.addEventListener('click', handleConfirm);
+            cancelBtn.addEventListener('click', handleCancel);
+            
+            // Handle Escape key (should cancel)
+            document.addEventListener('keydown', function escapeHandler(e) {
+                if (e.key === 'Escape') {
+                    handleCancel();
+                    document.removeEventListener('keydown', escapeHandler);
+                }
+            });
+            
+            // Handle click outside modal (should cancel)
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    handleCancel();
+                }
+            });
+        });
+    }
+    
+    /**
+     * Show jobs modal for a tracker
+     * @param {string} trackerName - Name of the tracker
+     * @param {Array} jobs - Array of jobs for the tracker
+     */
+    showJobsModal(trackerName, jobs) {
+        const modalHtml = `
+            <div id="jobs-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                <div class="bg-gray-800 rounded-xl p-6 max-w-4xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-semibold text-white">Jobs for ${trackerName}</h3>
+                        <button 
+                            id="close-jobs-btn" 
+                            class="text-gray-400 hover:text-white transition-colors"
+                            aria-label="Close jobs modal"
+                        >
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        ${jobs.length === 0 ? 
+                            '<div class="text-center py-8"><p class="text-gray-400">No jobs found for this tracker.</p></div>' :
+                            jobs.map(job => this.generateJobCard(job)).join('')
+                        }
+                        
+                        <div class="pt-4 border-t border-gray-600">
+                            <button 
+                                id="create-job-from-modal-btn"
+                                class="w-full bg-purple-600 hover:bg-purple-700 py-3 px-4 rounded-lg text-white font-medium transition-colors flex items-center justify-center space-x-2"
+                            >
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                </svg>
+                                <span>Create New Job</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        const modal = document.getElementById('jobs-modal');
+        const closeBtn = document.getElementById('close-jobs-btn');
+        const createJobBtn = document.getElementById('create-job-from-modal-btn');
+        
+        // Handle close
+        const handleClose = () => {
+            this.removeModal(modal);
+        };
+        
+        // Event listeners
+        closeBtn.addEventListener('click', handleClose);
+        
+        if (createJobBtn) {
+            createJobBtn.addEventListener('click', () => {
+                handleClose();
+                if (window.showJobForm) {
+                    window.showJobForm();
+                } else {
+                    window.location.href = '/web/jobs';
+                }
+            });
+        }
+        
+        // Handle Escape key
+        document.addEventListener('keydown', function escapeHandler(e) {
+            if (e.key === 'Escape') {
+                handleClose();
+                document.removeEventListener('keydown', escapeHandler);
+            }
+        });
+        
+        // Handle click outside modal
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                handleClose();
+            }
+        });
+    }
+    
+    /**
+     * Generate HTML for a job card in the modal
+     * @param {Object} job - Job object
+     * @returns {string} - HTML string for the job card
+     */
+    generateJobCard(job) {
+        const statusColor = job.is_active ? 'text-green-400' : 'text-gray-400';
+        const statusText = job.is_active ? 'Active' : 'Inactive';
+        const typeIcon = job.job_type === 'stock' ? '📈' : '🔗';
+        
+        return `
+            <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <h4 class="text-lg font-medium text-white">${this.escapeHtml(job.name)}</h4>
+                        <div class="flex items-center space-x-2 mt-1">
+                            <span class="text-sm ${statusColor}">${statusText}</span>
+                            <span class="text-sm text-gray-400">${typeIcon} ${job.job_type}</span>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button 
+                            data-job-action="view-details"
+                            data-job-id="${job.id}"
+                            class="text-blue-400 hover:text-blue-300 text-sm underline"
+                            onclick="window.location.href='/web/jobs?job_id=${job.id}'"
+                        >
+                            View Details
+                        </button>
+                        <button 
+                            data-job-action="edit-job"
+                            data-job-id="${job.id}"
+                            class="text-green-400 hover:text-green-300 text-sm underline"
+                        >
+                            Edit
+                        </button>
+                        <button 
+                            data-job-action="delete-job"
+                            data-job-id="${job.id}"
+                            data-job-name="${this.escapeHtml(job.name)}"
+                            class="text-red-400 hover:text-red-300 text-sm underline"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="text-sm text-gray-400 space-y-1">
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span class="font-mono text-xs">${this.escapeHtml(job.cron_schedule)}</span>
+                    </div>
+                    
+                    ${job.last_run_at ? `
+                        <div class="flex justify-between">
+                            <span>Last Run:</span>
+                            <span class="text-gray-300">${new Date(job.last_run_at).toLocaleDateString()}</span>
+                        </div>
+                    ` : ''}
+                    
+                    ${job.failure_count > 0 ? `
+                        <div class="flex justify-between">
+                            <span>Failures:</span>
+                            <span class="text-red-400">${job.failure_count}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <div class="mt-3 pt-3 border-t border-gray-600">
+                    <div class="flex space-x-2">
+                        <button 
+                            data-job-action="test-job"
+                            data-job-id="${job.id}"
+                            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded-lg transition-colors"
+                        >
+                            Run Now
+                        </button>
+                        <button 
+                            data-job-action="toggle-status"
+                            data-job-id="${job.id}"
+                            data-new-status="${!job.is_active}"
+                            class="bg-${job.is_active ? 'yellow' : 'green'}-600 hover:bg-${job.is_active ? 'yellow' : 'green'}-700 text-white text-sm py-2 px-3 rounded-lg transition-colors"
+                        >
+                            ${job.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    /**
+     * Scroll to a specific tracker card and highlight it
+     * @param {string} trackerId - ID of the tracker to scroll to
+     */
+    scrollToTracker(trackerId) {
+        const trackerCard = document.querySelector(`[data-tracker-id="${trackerId}"]`);
+        if (trackerCard) {
+            trackerCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Add highlight effect
+            trackerCard.classList.add('ring-4', 'ring-blue-500', 'ring-opacity-50');
+            setTimeout(() => {
+                trackerCard.classList.remove('ring-4', 'ring-blue-500', 'ring-opacity-50');
+            }, 3000);
+        }
     }
     
     /**
@@ -1156,6 +1856,27 @@ class TrackerDashboard {
                 }
             }, 300);
         }, 4000);
+    }
+    
+    /**
+     * Escape HTML to prevent XSS
+     * @param {string} text - Text to escape
+     * @returns {string} - Escaped text
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    /**
+     * Remove modal from DOM
+     * @param {Element} modal - Modal element to remove
+     */
+    removeModal(modal) {
+        if (modal && modal.parentNode) {
+            modal.parentNode.removeChild(modal);
+        }
     }
 }
 

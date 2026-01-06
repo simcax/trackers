@@ -7,7 +7,13 @@ in the database with proper security, expiration, and relationship management.
 Requirements: 4.1, 4.2, 4.3, 4.4
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utc_now():
+    """Helper function to get current UTC time with timezone info."""
+    return datetime.now(timezone.utc)
+
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import relationship
@@ -40,7 +46,7 @@ class APIKeyModel(Base):
     key_hash = Column(String(255), nullable=False, unique=True)  # Hashed key value
 
     # Timestamps - Requirements: 4.3
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utc_now, nullable=False)
     expires_at = Column(DateTime, nullable=True)  # Optional expiration date
     last_used_at = Column(DateTime, nullable=True)  # Track usage
 
@@ -73,7 +79,7 @@ class APIKeyModel(Base):
         """
         if self.expires_at is None:
             return False
-        return datetime.utcnow() > self.expires_at
+        return datetime.now(timezone.utc) > self.expires_at
 
     def is_near_expiration(self, days_threshold: int = 7) -> bool:
         """
@@ -95,7 +101,7 @@ class APIKeyModel(Base):
             return False
 
         # Check if expiration is within the threshold
-        time_until_expiration = self.expires_at - datetime.utcnow()
+        time_until_expiration = self.expires_at - datetime.now(timezone.utc)
         return time_until_expiration.days <= days_threshold
 
     def is_valid(self) -> bool:
@@ -125,7 +131,7 @@ class APIKeyModel(Base):
 
         Requirements: 4.3
         """
-        self.last_used_at = datetime.utcnow()
+        self.last_used_at = datetime.now(timezone.utc)
 
     def to_dict(self, include_sensitive: bool = False) -> dict:
         """

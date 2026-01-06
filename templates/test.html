@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}TailwindCSS Test - Tracker Web UI{% endblock %}
+{% block page_title %}TailwindCSS Test{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="space-y-8">
+        <!-- Test header -->
+        <div class="text-center">
+            <h2 class="text-3xl font-bold text-white mb-4">TailwindCSS & Flowbite Integration Test</h2>
+            <p class="text-gray-400">This page tests the TailwindCSS and Flowbite setup for the Tracker Web UI.</p>
+        </div>
+        
+        <!-- Test tracker card -->
+        <div class="tracker-card max-w-md mx-auto">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="tracker-icon bg-blue-500">
+                        💧
+                    </div>
+                    <div>
+                        <h3 class="font-semibold">Water Intake</h3>
+                        <p class="text-sm text-gray-400">Current: 2.5 Liters</p>
+                        <p class="text-xs text-green-400">+0.5L from yesterday</p>
+                    </div>
+                </div>
+                <div class="w-16 h-8 bg-gray-700 rounded flex items-center justify-center">
+                    <span class="text-xs text-gray-400">Chart</span>
+                </div>
+            </div>
+            
+            <div class="space-y-2 mt-4">
+                <p class="text-sm text-gray-400">Last 5 Days:</p>
+                <div class="flex items-center space-x-2">
+                    <button class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition-colors">
+                        + View Chart
+                    </button>
+                    <span class="text-gray-500">→</span>
+                    <span class="value-badge">2.0</span>
+                    <span class="value-badge">2.2</span>
+                    <span class="value-badge">1.8</span>
+                    <span class="value-badge">2.5</span>
+                    <span class="value-badge">2.5</span>
+                </div>
+            </div>
+            
+            <button class="w-full btn-primary mt-4">
+                + Add Today's Value
+            </button>
+        </div>
+        
+        <!-- Test form -->
+        <div class="bg-gray-800 rounded-xl p-6 max-w-md mx-auto">
+            <h3 class="text-lg font-semibold mb-4">Test Form</h3>
+            
+            <form class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Tracker Name:</label>
+                    <input type="text" class="form-input" placeholder="e.g., Water Intake">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">Unit:</label>
+                    <input type="text" class="form-input" placeholder="e.g., Liters">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">Color Theme:</label>
+                    <div class="flex space-x-3">
+                        <button type="button" class="color-option bg-red-500" data-color="red"></button>
+                        <button type="button" class="color-option bg-blue-500 selected" data-color="blue"></button>
+                        <button type="button" class="color-option bg-green-500" data-color="green"></button>
+                    </div>
+                </div>
+                
+                <div class="flex space-x-3">
+                    <button type="submit" class="flex-1 btn-primary">Save</button>
+                    <button type="button" class="flex-1 btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Test buttons and notifications -->
+        <div class="text-center space-y-4">
+            <div class="space-x-4">
+                <button onclick="TrackerUI.showToast('Success message!', 'success')" class="btn-primary">
+                    Test Success Toast
+                </button>
+                <button onclick="TrackerUI.showToast('Error message!', 'error')" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                    Test Error Toast
+                </button>
+                <button onclick="TrackerUI.showToast('Info message!', 'info')" class="bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                    Test Info Toast
+                </button>
+            </div>
+            
+            <button onclick="TrackerUI.showLoading(); setTimeout(() => TrackerUI.hideLoading(), 2000)" class="bg-teal-500 hover:bg-teal-600 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                Test Loading (2s)
+            </button>
+        </div>
+        
+        <!-- Responsive grid test -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="bg-gray-800 p-4 rounded-lg text-center">
+                <h4 class="font-semibold">Mobile</h4>
+                <p class="text-sm text-gray-400">1 column</p>
+            </div>
+            <div class="bg-gray-800 p-4 rounded-lg text-center">
+                <h4 class="font-semibold">Tablet</h4>
+                <p class="text-sm text-gray-400">2 columns</p>
+            </div>
+            <div class="bg-gray-800 p-4 rounded-lg text-center">
+                <h4 class="font-semibold">Desktop</h4>
+                <p class="text-sm text-gray-400">3 columns</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Test color selection
+    document.addEventListener('DOMContentLoaded', function() {
+        const colorOptions = document.querySelectorAll('.color-option');
+        colorOptions.forEach(option => {
+            option.addEventListener('click', function() {
+                colorOptions.forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
+                TrackerUI.showToast(`Selected ${this.dataset.color} color`, 'info', 1500);
+            });
+        });
+    });
+</script>
+{% endblock %}

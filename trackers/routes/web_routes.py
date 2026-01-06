@@ -12,11 +12,12 @@ Validates: Requirements 5.1, 5.2, 5.3, 5.4
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from flask import (
     Blueprint,
+    current_app,
     jsonify,
     redirect,
     render_template,
@@ -63,6 +64,10 @@ class TrackerDisplayData:
     unit: Optional[str] = None
     total_change: float = 0.0
     total_change_text: str = "No data"
+    # Job-related fields
+    job_count: int = 0
+    active_jobs: int = 0
+    has_jobs: bool = False
 
 
 def format_danish_number(number):
@@ -191,6 +196,39 @@ def format_tracker_for_display(
             if unit_match:
                 unit = unit_match.group(1).strip()
 
+        # Get job information for this tracker
+        job_count = 0
+        active_jobs = 0
+        has_jobs = False
+
+        try:
+            # Import here to avoid circular imports
+            from trackers.db import database as db_module
+            from trackers.models.job_model import JobModel
+
+            # Get a database session to query jobs
+            db = db_module.SessionLocal()
+            try:
+                jobs = (
+                    db.query(JobModel)
+                    .filter(
+                        JobModel.tracker_id == tracker.id,
+                        JobModel.user_id == tracker.user_id,
+                    )
+                    .all()
+                )
+
+                job_count = len(jobs)
+                active_jobs = len([job for job in jobs if job.is_active])
+                has_jobs = job_count > 0
+
+            finally:
+                db.close()
+
+        except Exception as job_error:
+            print(f"Warning: Error querying jobs for tracker {tracker.id}: {job_error}")
+            # Use default values if job query fails
+
         return TrackerDisplayData(
             id=tracker.id,
             name=tracker.name,
@@ -206,6 +244,9 @@ def format_tracker_for_display(
             unit=unit,
             total_change=total_change,
             total_change_text=total_change_text,
+            job_count=job_count,
+            active_jobs=active_jobs,
+            has_jobs=has_jobs,
         )
     except Exception as e:
         print(f"Error in format_tracker_for_display for tracker {tracker.id}: {e}")
@@ -225,10 +266,14 @@ def format_tracker_for_display(
             unit=None,
             total_change=0.0,
             total_change_text="No data",
+            job_count=0,
+            active_jobs=0,
+            has_jobs=False,
         )
 
 
 @web_bp.route("/")
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=True)
 def dashboard():
     """
     Main dashboard view for the web interface.
@@ -243,9 +288,6 @@ def dashboard():
     Validates: Requirements 6.5, 8.1
     """
     try:
-        # Authentication context is provided by the template context processor
-        # which only considers Google OAuth for web authentication
-
         # Get current database user
         from trackers.services.user_service import UserService
 
@@ -254,43 +296,70 @@ def dashboard():
         try:
             # Get current database user for filtering
             user_service = UserService(db)
-            database_user = user_service.get_current_user_from_session()
+            database_user = None
 
-            # Only create database users for Google OAuth users
-            if not database_user:
-                # Check if we have Google OAuth user info
+            # Get authentication context that was set up by the @require_auth decorator
+            from trackers.auth.decorators import get_auth_context
+
+            auth_context = get_auth_context()
+
+            # The @require_auth decorator should have already validated authentication
+            # Now we just need to get or create the database user record
+            if auth_context.is_authenticated and auth_context.user_info:
+                # User is authenticated via Google OAuth or email/password
                 try:
-                    from trackers.auth.decorators import (
-                        _check_google_oauth_auth,
-                        _has_google_auth_configured,
-                    )
-
-                    if _has_google_auth_configured():
-                        google_oauth_valid, google_user_info = (
-                            _check_google_oauth_auth()
+                    if auth_context.user_info.google_id:
+                        # Google OAuth user - get or create database record
+                        database_user = user_service.get_user_by_google_id(
+                            auth_context.user_info.google_id
                         )
-                        if google_oauth_valid and google_user_info:
-                            try:
-                                database_user = user_service.create_or_update_user(
-                                    google_user_info
-                                )
-                                db.commit()
-                            except Exception as e:
-                                print(f"Error creating database user: {e}")
-                                db.rollback()
-                                return render_template(
-                                    "dashboard.html",
-                                    trackers=[],
-                                    error="Unable to access user data",
-                                )
-                except Exception as e:
-                    print(f"Error checking Google OAuth: {e}")
+                        if not database_user:
+                            # Create user if doesn't exist
+                            database_user = user_service.create_or_update_user(
+                                auth_context.user_info
+                            )
+                            db.commit()
+                    else:
+                        # Email/password user - try session lookup
+                        database_user = user_service.get_current_user_from_session()
+                        if not database_user:
+                            return render_template(
+                                "dashboard.html",
+                                trackers=[],
+                                error="Session user not found",
+                            )
+                except Exception as user_error:
+                    print(f"User lookup failed: {user_error}")
+                    import traceback
 
-            # Fetch user's trackers only
-            if database_user:
-                trackers = get_all_trackers(db, user_id=database_user.id)
+                    traceback.print_exc()
+                    database_user = None
+            elif auth_context.api_key_valid:
+                # API key authentication - use default system user
+                try:
+                    database_user = user_service.get_or_create_default_system_user()
+                    if database_user:
+                        db.commit()
+                except Exception as default_error:
+                    print(f"Default user creation failed: {default_error}")
+                    database_user = None
             else:
-                trackers = []
+                # This should not happen if @require_auth is working correctly
+                return render_template(
+                    "dashboard.html",
+                    trackers=[],
+                    error="Authentication required",
+                )
+
+            if not database_user:
+                return render_template(
+                    "dashboard.html",
+                    trackers=[],
+                    error="User authentication required",
+                )
+
+            # Fetch user's trackers
+            trackers = get_all_trackers(db, user_id=database_user.id)
 
             # Format trackers for display with recent values
             display_data = []
@@ -1119,3 +1188,914 @@ def oauth_only_demo():
             "demonstration": "This route only accepts Google OAuth authentication",
         }
     )
+
+
+@web_bp.route("/jobs")
+@require_auth(
+    allow_api_key=True,  # Temporarily allow API key for testing
+    allow_google_oauth=True,
+    allow_email_password=True,
+    redirect_to_login=True,
+)
+def jobs_dashboard():
+    """
+    Job management dashboard view for the web interface.
+
+    Fetches user's automated jobs and displays them in a management interface
+    with options to create, edit, test, and monitor job execution.
+
+    Returns:
+        Rendered jobs template with user's job data
+
+    Requirements: 1.1, 1.2, 1.3, 1.4, 7.1, 7.2
+    """
+    try:
+        # Get current database user
+        from trackers.services.user_service import UserService
+
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Get current database user for filtering
+            user_service = UserService(db)
+            database_user = user_service.get_current_user_from_session()
+
+            # Only create database users for authenticated users
+            if not database_user:
+                # Check if we have authenticated user info
+                current_user = get_current_user()
+                if current_user:
+                    try:
+                        database_user = user_service.create_or_update_user(current_user)
+                        db.commit()
+                    except Exception as e:
+                        print(f"Error creating database user: {e}")
+                        db.rollback()
+                        return render_template(
+                            "jobs.html",
+                            jobs=[],
+                            error="Unable to access user data",
+                        )
+
+            # Fetch user's jobs
+            jobs = []
+            if database_user:
+                from trackers.services.job_service import JobService
+
+                # Get job scheduler from app context
+                scheduler = getattr(current_app, "job_scheduler", None)
+                job_service = JobService(db, scheduler)
+
+                try:
+                    jobs = job_service.get_user_jobs(database_user.id)
+                    print(f"DEBUG: Found {len(jobs)} jobs for user {database_user.id}")
+                    for job in jobs:
+                        print(
+                            f"DEBUG: Job {job.id}: {job.name} (active: {job.is_active})"
+                        )
+                except Exception as e:
+                    print(f"Error fetching jobs: {e}")
+                    jobs = []
+            else:
+                print("DEBUG: No database_user found")
+
+            # Format jobs for display
+            display_jobs = []
+            for job in jobs:
+                display_jobs.append(
+                    {
+                        "id": job.id,
+                        "name": job.name,
+                        "job_type": job.job_type,
+                        "tracker_id": job.tracker_id,
+                        "cron_schedule": job.cron_schedule,
+                        "is_active": job.is_active,
+                        "created_at": job.created_at,
+                        "updated_at": job.updated_at,
+                        "last_run_at": job.last_run_at,
+                        "last_success_at": job.last_success_at,
+                        "failure_count": job.failure_count,
+                        "last_error": job.last_error,
+                    }
+                )
+
+            print(f"DEBUG: Passing {len(display_jobs)} display_jobs to template")
+
+            return render_template(
+                "jobs.html",
+                jobs=display_jobs,
+                database_user=database_user,
+            )
+
+        except Exception as e:
+            # Log error and show empty jobs dashboard
+            print(f"Error fetching job data: {e}")
+            return render_template(
+                "jobs.html",
+                jobs=[],
+                error="Unable to load job data",
+            )
+        finally:
+            db.close()
+
+    except Exception as e:
+        # Fallback to empty jobs page
+        print(f"Jobs dashboard error: {e}")
+        return render_template("jobs.html", jobs=[], error="Dashboard error")
+
+
+@web_bp.route("/jobs/data")
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
+def jobs_data():
+    """
+    Get jobs data as JSON for AJAX updates.
+
+    Returns:
+        JSON response with user's job data
+
+    Requirements: 1.1, 7.1
+    """
+    try:
+        # Get current database user
+        from trackers.services.user_service import UserService
+
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Get current database user for filtering
+            user_service = UserService(db)
+            database_user = user_service.get_current_user_from_session()
+
+            if not database_user:
+                return jsonify({"error": "User authentication required"}), 401
+
+            # Fetch user's jobs
+            from trackers.services.job_service import JobService
+
+            # Get job scheduler from app context
+            scheduler = getattr(current_app, "job_scheduler", None)
+            job_service = JobService(db, scheduler)
+
+            jobs = job_service.get_user_jobs(database_user.id)
+
+            # Format jobs for JSON response
+            jobs_data = []
+            for job in jobs:
+                jobs_data.append(
+                    {
+                        "id": job.id,
+                        "name": job.name,
+                        "job_type": job.job_type,
+                        "tracker_id": job.tracker_id,
+                        "cron_schedule": job.cron_schedule,
+                        "is_active": job.is_active,
+                        "created_at": job.created_at.isoformat()
+                        if job.created_at
+                        else None,
+                        "updated_at": job.updated_at.isoformat()
+                        if job.updated_at
+                        else None,
+                        "last_run_at": job.last_run_at.isoformat()
+                        if job.last_run_at
+                        else None,
+                        "last_success_at": job.last_success_at.isoformat()
+                        if job.last_success_at
+                        else None,
+                        "failure_count": job.failure_count,
+                        "last_error": job.last_error,
+                    }
+                )
+
+            return jsonify(
+                {
+                    "jobs": jobs_data,
+                    "total": len(jobs_data),
+                    "active": len([j for j in jobs_data if j["is_active"]]),
+                }
+            ), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"Error fetching jobs data: {e}")
+        return jsonify({"error": "Failed to fetch jobs data"}), 500
+
+
+@web_bp.route("/trackers/data")
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
+def trackers_data():
+    """
+    Get user's trackers data as JSON for web interface AJAX calls.
+
+    This endpoint uses session-based authentication (same as other web routes)
+    and is specifically designed for the web interface to load tracker data
+    for forms and dropdowns.
+
+    Returns:
+        JSON response with user's tracker data
+
+    Requirements: 6.1, 6.5
+    """
+    try:
+        # Get current database user
+        from trackers.services.user_service import UserService
+
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Get current database user for filtering
+            user_service = UserService(db)
+            database_user = None
+
+            # Get authentication context to determine auth method
+            from trackers.auth.decorators import get_auth_context
+
+            auth_context = get_auth_context()
+
+            # Handle different authentication methods
+            if auth_context.is_authenticated and auth_context.user_info:
+                # User is authenticated via Google OAuth or email/password
+                try:
+                    if auth_context.user_info.google_id:
+                        # Google OAuth user
+                        database_user = user_service.get_user_by_google_id(
+                            auth_context.user_info.google_id
+                        )
+                        if not database_user:
+                            # Create user if doesn't exist
+                            database_user = user_service.create_or_update_user(
+                                auth_context.user_info
+                            )
+                            db.commit()
+                    else:
+                        # Email/password user - try session lookup
+                        database_user = user_service.get_current_user_from_session()
+                        if not database_user:
+                            return jsonify({"error": "Session user not found"}), 401
+                except Exception as user_error:
+                    print(f"User lookup failed: {user_error}")
+                    import traceback
+
+                    traceback.print_exc()
+                    database_user = None
+            elif auth_context.api_key_valid:
+                # API key authentication - use default system user
+                try:
+                    database_user = user_service.get_or_create_default_system_user()
+                    if database_user:
+                        db.commit()
+                except Exception as default_error:
+                    print(f"Default user creation failed: {default_error}")
+                    database_user = None
+            else:
+                # This should not happen if @require_auth is working correctly
+                return jsonify({"error": "Authentication required"}), 401
+
+            if not database_user:
+                return jsonify({"error": "User authentication required"}), 401
+
+            # Fetch user's trackers
+            trackers = get_all_trackers(db, user_id=database_user.id)
+
+            # Format trackers for JSON response
+            trackers_data = []
+            for tracker in trackers:
+                # Get job information for this tracker
+                try:
+                    from trackers.models.job_model import JobModel
+
+                    jobs = (
+                        db.query(JobModel)
+                        .filter(
+                            JobModel.tracker_id == tracker.id,
+                            JobModel.user_id == database_user.id,
+                        )
+                        .all()
+                    )
+
+                    # Calculate job statistics
+                    job_count = len(jobs)
+                    active_jobs = len([job for job in jobs if job.is_active])
+                    has_jobs = job_count > 0
+
+                except Exception as job_error:
+                    # If there's an error with job queries, provide default values
+                    print(
+                        f"Warning: Error querying jobs for tracker {tracker.id}: {job_error}"
+                    )
+                    job_count = 0
+                    active_jobs = 0
+                    has_jobs = False
+
+                trackers_data.append(
+                    {
+                        "id": tracker.id,
+                        "name": tracker.name,
+                        "description": tracker.description,
+                        "user_id": tracker.user_id,
+                        "created_at": tracker.created_at.isoformat()
+                        if tracker.created_at
+                        else None,
+                        "updated_at": tracker.updated_at.isoformat()
+                        if tracker.updated_at
+                        else None,
+                        "job_count": job_count,
+                        "active_jobs": active_jobs,
+                        "has_jobs": has_jobs,
+                    }
+                )
+
+            return jsonify(
+                {
+                    "trackers": trackers_data,
+                    "total": len(trackers_data),
+                }
+            ), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"Error fetching trackers data: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+        # Try to return a basic response without job information
+        try:
+            db = db_module.SessionLocal()
+            try:
+                from trackers.services.user_service import UserService
+
+                user_service = UserService(db)
+                database_user = user_service.get_current_user_from_session()
+
+                if database_user:
+                    trackers = get_all_trackers(db, user_id=database_user.id)
+                    trackers_data = []
+                    for tracker in trackers:
+                        trackers_data.append(
+                            {
+                                "id": tracker.id,
+                                "name": tracker.name,
+                                "description": tracker.description,
+                                "user_id": tracker.user_id,
+                                "created_at": tracker.created_at.isoformat()
+                                if tracker.created_at
+                                else None,
+                                "updated_at": tracker.updated_at.isoformat()
+                                if tracker.updated_at
+                                else None,
+                                "job_count": 0,
+                                "active_jobs": 0,
+                                "has_jobs": False,
+                            }
+                        )
+
+                    return jsonify(
+                        {
+                            "trackers": trackers_data,
+                            "total": len(trackers_data),
+                            "warning": "Job information unavailable",
+                        }
+                    ), 200
+            finally:
+                db.close()
+        except Exception as fallback_error:
+            print(f"Fallback also failed: {fallback_error}")
+
+        return jsonify({"error": "Failed to fetch trackers data"}), 500
+
+
+@web_bp.route("/tracker/<int:tracker_id>", methods=["PUT"])
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
+def update_tracker_web(tracker_id):
+    """
+    Update tracker via web interface.
+
+    Args:
+        tracker_id: ID of the tracker to update
+
+    Request Body:
+        name: New tracker name (required)
+        description: New tracker description (optional)
+
+    Returns:
+        JSON response with updated tracker data
+
+    Requirements: 6.1, 6.5
+    """
+    try:
+        # Get current database user
+        from trackers.services.user_service import UserService
+
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Get current database user for ownership verification
+            user_service = UserService(db)
+            database_user = user_service.get_current_user_from_session()
+
+            if not database_user:
+                # If no database user found, try to create one from OAuth info
+                current_user = get_current_user()
+                if current_user:
+                    try:
+                        database_user = user_service.create_or_update_user(current_user)
+                        db.commit()
+                    except Exception as e:
+                        print(f"Error creating database user: {e}")
+                        db.rollback()
+                        return jsonify({"error": "Unable to access user data"}), 500
+
+            if not database_user:
+                return jsonify({"error": "User authentication required"}), 401
+
+            # Verify user owns the tracker
+            from trackers.db.trackerdb import get_user_tracker
+
+            tracker = get_user_tracker(db, tracker_id, database_user.id)
+            if not tracker:
+                return jsonify({"error": "Tracker not found or access denied"}), 404
+
+            # Get request data
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "Request body is required"}), 400
+
+            # Validate required fields
+            name = data.get("name", "").strip()
+            if not name:
+                return jsonify({"error": "Tracker name is required"}), 400
+
+            description = data.get("description", "").strip()
+
+            # Update tracker
+            tracker.name = name
+            tracker.description = description if description else None
+
+            db.commit()
+
+            # Return updated tracker data
+            return jsonify(
+                {
+                    "message": "Tracker updated successfully",
+                    "tracker": {
+                        "id": tracker.id,
+                        "name": tracker.name,
+                        "description": tracker.description,
+                        "user_id": tracker.user_id,
+                    },
+                }
+            ), 200
+
+        except IntegrityError:
+            db.rollback()
+            return jsonify(
+                {"error": f"Tracker with name '{name}' already exists for your account"}
+            ), 409
+
+        except Exception as e:
+            db.rollback()
+            print(f"Error updating tracker: {e}")
+            return jsonify({"error": "Failed to update tracker"}), 500
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"Request processing error: {e}")
+        return jsonify({"error": "Request processing error"}), 500
+
+
+@web_bp.route("/tracker/<int:tracker_id>", methods=["DELETE"])
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
+def delete_tracker_web(tracker_id):
+    """
+    Delete tracker via web interface.
+
+    Args:
+        tracker_id: ID of the tracker to delete
+
+    Returns:
+        JSON response confirming deletion
+
+    Requirements: 6.1, 6.5
+    """
+    try:
+        # Get current database user
+        from trackers.services.user_service import UserService
+
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Get current database user for ownership verification
+            user_service = UserService(db)
+            database_user = user_service.get_current_user_from_session()
+
+            if not database_user:
+                # If no database user found, try to create one from OAuth info
+                current_user = get_current_user()
+                if current_user:
+                    try:
+                        database_user = user_service.create_or_update_user(current_user)
+                        db.commit()
+                    except Exception as e:
+                        print(f"Error creating database user: {e}")
+                        db.rollback()
+                        return jsonify({"error": "Unable to access user data"}), 500
+
+            if not database_user:
+                return jsonify({"error": "User authentication required"}), 401
+
+            # Verify user owns the tracker
+            from trackers.db.trackerdb import get_user_tracker
+
+            tracker = get_user_tracker(db, tracker_id, database_user.id)
+            if not tracker:
+                return jsonify({"error": "Tracker not found or access denied"}), 404
+
+            # Store tracker name for response
+            tracker_name = tracker.name
+
+            # Delete associated tracker values first
+            from trackers.models.tracker_value_model import TrackerValueModel
+
+            db.query(TrackerValueModel).filter(
+                TrackerValueModel.tracker_id == tracker_id
+            ).delete()
+
+            # Delete associated jobs
+            from trackers.models.job_model import JobModel
+
+            db.query(JobModel).filter(
+                JobModel.tracker_id == tracker_id, JobModel.user_id == database_user.id
+            ).delete()
+
+            # Delete the tracker
+            db.delete(tracker)
+            db.commit()
+
+            # Return success response
+            return jsonify(
+                {
+                    "message": f"Tracker '{tracker_name}' deleted successfully",
+                    "tracker_id": tracker_id,
+                }
+            ), 200
+
+        except Exception as e:
+            db.rollback()
+            print(f"Error deleting tracker: {e}")
+            return jsonify({"error": "Failed to delete tracker"}), 500
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"Request processing error: {e}")
+        return jsonify({"error": "Request processing error"}), 500
+
+
+@web_bp.route("/trackers/<int:tracker_id>/jobs")
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
+def tracker_jobs(tracker_id):
+    """
+    Get jobs associated with a specific tracker.
+
+    Args:
+        tracker_id: ID of the tracker to get jobs for
+
+    Returns:
+        JSON response with jobs for the tracker
+
+    Requirements: 6.1, 6.5
+    """
+    try:
+        # Get current database user
+        from trackers.services.user_service import UserService
+
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Get current database user for filtering
+            user_service = UserService(db)
+            database_user = user_service.get_current_user_from_session()
+
+            if not database_user:
+                # If no database user found, try to create one from OAuth info
+                current_user = get_current_user()
+                if current_user:
+                    try:
+                        database_user = user_service.create_or_update_user(current_user)
+                        db.commit()
+                    except Exception as e:
+                        print(f"Error creating database user: {e}")
+                        db.rollback()
+                        return jsonify({"error": "Unable to access user data"}), 500
+
+            if not database_user:
+                return jsonify({"error": "User authentication required"}), 401
+
+            # Verify user owns the tracker
+            from trackers.db.trackerdb import get_user_tracker
+
+            tracker = get_user_tracker(db, tracker_id, database_user.id)
+            if not tracker:
+                return jsonify({"error": "Tracker not found or access denied"}), 404
+
+            # Get jobs for this tracker
+            from trackers.models.job_model import JobModel
+
+            jobs = (
+                db.query(JobModel)
+                .filter(
+                    JobModel.tracker_id == tracker_id,
+                    JobModel.user_id == database_user.id,
+                )
+                .order_by(JobModel.created_at.desc())
+                .all()
+            )
+
+            # Format jobs for JSON response
+            jobs_data = []
+            for job in jobs:
+                jobs_data.append(
+                    {
+                        "id": job.id,
+                        "name": job.name,
+                        "job_type": job.job_type,
+                        "is_active": job.is_active,
+                        "cron_schedule": job.cron_schedule,
+                        "created_at": job.created_at.isoformat()
+                        if job.created_at
+                        else None,
+                        "updated_at": job.updated_at.isoformat()
+                        if job.updated_at
+                        else None,
+                        "last_run_at": job.last_run_at.isoformat()
+                        if job.last_run_at
+                        else None,
+                        "last_success_at": job.last_success_at.isoformat()
+                        if job.last_success_at
+                        else None,
+                        "failure_count": job.failure_count,
+                    }
+                )
+
+            return jsonify(
+                {
+                    "tracker": {
+                        "id": tracker.id,
+                        "name": tracker.name,
+                        "description": tracker.description,
+                    },
+                    "jobs": jobs_data,
+                    "total": len(jobs_data),
+                }
+            ), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"Error fetching tracker jobs: {e}")
+        return jsonify({"error": "Failed to fetch tracker jobs"}), 500
+
+
+@web_bp.route("/jobs/<int:job_id>/tracker")
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
+def job_tracker(job_id):
+    """
+    Get tracker information for a specific job.
+
+    Args:
+        job_id: ID of the job to get tracker for
+
+    Returns:
+        JSON response with tracker information for the job
+
+    Requirements: 6.1, 6.5
+    """
+    try:
+        # Get current database user
+        from trackers.services.user_service import UserService
+
+        # Get database session
+        db = db_module.SessionLocal()
+        try:
+            # Get current database user for filtering
+            user_service = UserService(db)
+            database_user = user_service.get_current_user_from_session()
+
+            if not database_user:
+                # If no database user found, try to create one from OAuth info
+                current_user = get_current_user()
+                if current_user:
+                    try:
+                        database_user = user_service.create_or_update_user(current_user)
+                        db.commit()
+                    except Exception as e:
+                        print(f"Error creating database user: {e}")
+                        db.rollback()
+                        return jsonify({"error": "Unable to access user data"}), 500
+
+            if not database_user:
+                return jsonify({"error": "User authentication required"}), 401
+
+            # Get job and verify user owns it
+            from trackers.models.job_model import JobModel
+
+            job = (
+                db.query(JobModel)
+                .filter(JobModel.id == job_id, JobModel.user_id == database_user.id)
+                .first()
+            )
+
+            if not job:
+                return jsonify({"error": "Job not found or access denied"}), 404
+
+            # Get the associated tracker
+            from trackers.db.trackerdb import get_user_tracker
+
+            tracker = get_user_tracker(db, job.tracker_id, database_user.id)
+            if not tracker:
+                return jsonify({"error": "Associated tracker not found"}), 404
+
+            return jsonify(
+                {
+                    "job": {
+                        "id": job.id,
+                        "name": job.name,
+                        "job_type": job.job_type,
+                    },
+                    "tracker": {
+                        "id": tracker.id,
+                        "name": tracker.name,
+                        "description": tracker.description,
+                    },
+                }
+            ), 200
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        print(f"Error fetching job tracker: {e}")
+        return jsonify({"error": "Failed to fetch job tracker"}), 500
+
+
+@web_bp.route("/jobs/validate/cron", methods=["POST"])
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
+def validate_cron_web():
+    """
+    Validate cron expression for web interface.
+
+    This endpoint uses session-based authentication and is specifically designed
+    for the web interface job creation form to validate cron expressions.
+
+    Expected JSON payload:
+    {
+        "cron_expression": "0 9 * * *"
+    }
+
+    Returns:
+        JSON response with validation results
+
+    Requirements: 5.1, 5.4
+    """
+    try:
+        data = request.get_json()
+        if not data or "cron_expression" not in data:
+            return jsonify(
+                {
+                    "valid": False,
+                    "error": "Missing 'cron_expression' in request body",
+                }
+            ), 400
+
+        from trackers.services.job_providers.job_testing_service import (
+            JobTestingService,
+        )
+
+        testing_service = JobTestingService()
+        validation_result = testing_service.validate_cron_expression(
+            data["cron_expression"]
+        )
+
+        # Format response for web interface compatibility
+        response = {
+            "valid": validation_result.get("is_valid", False),
+            "description": validation_result.get("description", ""),
+            "error": "; ".join(validation_result.get("errors", []))
+            if validation_result.get("errors")
+            else None,
+        }
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        print(f"Error validating cron expression: {e}")
+        return jsonify(
+            {
+                "valid": False,
+                "error": "Failed to validate cron expression",
+            }
+        ), 500
+
+
+@web_bp.route("/jobs/test/config", methods=["POST"])
+@require_auth(allow_api_key=True, allow_google_oauth=True, redirect_to_login=False)
+def test_job_configuration_web():
+    """
+    Test job configuration for web interface.
+
+    This endpoint uses session-based authentication and is specifically designed
+    for the web interface job creation form to test job configurations.
+
+    Expected JSON payload:
+    {
+        "job_type": "stock",
+        "config": {...},
+        "cron_schedule": "0 9 * * *",
+        "use_mocks": true
+    }
+
+    Returns:
+        JSON response with test results
+
+    Requirements: 5.1, 5.4, 10.1, 10.2
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify(
+                {
+                    "overall_valid": False,
+                    "config_validation": {
+                        "is_valid": False,
+                        "errors": ["Missing request body"],
+                    },
+                    "cron_validation": {"is_valid": False, "errors": []},
+                    "execution_test": {
+                        "success": False,
+                        "error_message": "No data provided",
+                    },
+                    "recommendations": ["Provide job configuration data"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            ), 400
+
+        # Validate required fields
+        required_fields = ["job_type", "config", "cron_schedule"]
+        missing_fields = [field for field in required_fields if field not in data]
+
+        if missing_fields:
+            return jsonify(
+                {
+                    "overall_valid": False,
+                    "config_validation": {
+                        "is_valid": False,
+                        "errors": [
+                            f"Missing required fields: {', '.join(missing_fields)}"
+                        ],
+                    },
+                    "cron_validation": {"is_valid": False, "errors": []},
+                    "execution_test": {
+                        "success": False,
+                        "error_message": "Missing required fields",
+                    },
+                    "recommendations": ["Provide all required fields"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            ), 400
+
+        from trackers.services.job_providers.job_testing_service import (
+            JobTestingService,
+        )
+
+        testing_service = JobTestingService()
+        use_mocks = data.get("use_mocks", True)
+
+        test_result = testing_service.test_job_configuration(
+            data["job_type"], data["config"], data["cron_schedule"], use_mocks
+        )
+
+        return jsonify(test_result), 200
+
+    except Exception as e:
+        logger.error(f"Error testing job configuration: {str(e)}")
+        return jsonify(
+            {
+                "overall_valid": False,
+                "config_validation": {
+                    "is_valid": False,
+                    "errors": [f"Testing error: {str(e)}"],
+                },
+                "cron_validation": {"is_valid": False, "errors": []},
+                "execution_test": {"success": False, "error_message": str(e)},
+                "recommendations": ["Fix configuration errors and try again"],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        ), 500

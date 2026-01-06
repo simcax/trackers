@@ -1,0 +1,686 @@
+<!-- Job Creation Form Component -->
+<form id="job-form" class="space-y-6" novalidate>
+    <!-- Job Basic Information -->
+    <div class="space-y-4">
+        <div>
+            <label for="job-name" class="block text-sm font-medium text-gray-300 mb-2">
+                Job Name <span class="text-red-400">*</span>
+            </label>
+            <input 
+                type="text" 
+                id="job-name" 
+                name="name"
+                required
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., Apple Stock Price, Weather Data"
+                aria-describedby="job-name-help"
+            >
+            <p id="job-name-help" class="text-xs text-gray-500 mt-1">Choose a descriptive name for your automated job</p>
+            <div id="job-name-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+        </div>
+        
+        <div>
+            <label for="job-type" class="block text-sm font-medium text-gray-300 mb-2">
+                Job Type <span class="text-red-400">*</span>
+            </label>
+            <select 
+                id="job-type" 
+                name="job_type"
+                required
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                aria-describedby="job-type-help"
+            >
+                <option value="">Select job type...</option>
+                <option value="stock">📈 Stock Price - Fetch stock prices from financial APIs</option>
+                <option value="generic">🔗 Generic HTTP - Fetch data from any HTTP API</option>
+            </select>
+            <p id="job-type-help" class="text-xs text-gray-500 mt-1">Choose the type of data source for your job</p>
+            <div id="job-type-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+        </div>
+        
+        <div>
+            <label for="tracker-select" class="block text-sm font-medium text-gray-300 mb-2">
+                Target Tracker <span class="text-red-400">*</span>
+            </label>
+            <select 
+                id="tracker-select" 
+                name="tracker_id"
+                required
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                aria-describedby="tracker-select-help"
+            >
+                <option value="">Select tracker...</option>
+                <!-- Options will be loaded dynamically -->
+            </select>
+            <p id="tracker-select-help" class="text-xs text-gray-500 mt-1">Choose which tracker will receive the collected data</p>
+            <div id="tracker-select-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+        </div>
+    </div>
+    
+    <!-- Job Configuration (Dynamic based on job type) -->
+    <div id="job-config-section" class="space-y-4 hidden">
+        <h3 class="text-lg font-medium text-white border-b border-gray-600 pb-2">Job Configuration</h3>
+        
+        <!-- Stock Job Configuration -->
+        <div id="stock-config" class="space-y-4 hidden">
+            <div>
+                <label for="stock-symbol" class="block text-sm font-medium text-gray-300 mb-2">
+                    Stock Symbol <span class="text-red-400">*</span>
+                </label>
+                <input 
+                    type="text" 
+                    id="stock-symbol" 
+                    name="stock_symbol"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent uppercase"
+                    placeholder="e.g., AAPL, GOOGL, MSFT"
+                    aria-describedby="stock-symbol-help"
+                >
+                <p id="stock-symbol-help" class="text-xs text-gray-500 mt-1">Enter the stock ticker symbol (e.g., AAPL for Apple Inc.)</p>
+                <div id="stock-symbol-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+            </div>
+            
+            <div>
+                <label for="stock-provider" class="block text-sm font-medium text-gray-300 mb-2">
+                    Data Provider <span class="text-red-400">*</span>
+                </label>
+                <select 
+                    id="stock-provider" 
+                    name="stock_provider"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    aria-describedby="stock-provider-help"
+                >
+                    <option value="">Select provider...</option>
+                    <option value="alpha_vantage">Alpha Vantage (Recommended)</option>
+                    <option value="yahoo_finance">Yahoo Finance</option>
+                    <option value="iex_cloud">IEX Cloud</option>
+                </select>
+                <p id="stock-provider-help" class="text-xs text-gray-500 mt-1">Choose your preferred stock data provider</p>
+                <div id="stock-provider-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+            </div>
+            
+            <div id="api-key-section" class="hidden">
+                <label for="stock-api-key" class="block text-sm font-medium text-gray-300 mb-2">
+                    API Key <span class="text-red-400">*</span>
+                </label>
+                <input 
+                    type="password" 
+                    id="stock-api-key" 
+                    name="stock_api_key"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter your API key"
+                    aria-describedby="stock-api-key-help"
+                >
+                <p id="stock-api-key-help" class="text-xs text-gray-500 mt-1">
+                    Your API key will be encrypted before storage. 
+                    <a href="#" id="api-key-help-link" class="text-blue-400 hover:text-blue-300">Get API key</a>
+                </p>
+                <div id="stock-api-key-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+            </div>
+        </div>
+        
+        <!-- Generic HTTP Job Configuration -->
+        <div id="generic-config" class="space-y-4 hidden">
+            <div>
+                <label for="generic-url" class="block text-sm font-medium text-gray-300 mb-2">
+                    API URL <span class="text-red-400">*</span>
+                </label>
+                <input 
+                    type="url" 
+                    id="generic-url" 
+                    name="generic_url"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="https://api.example.com/data"
+                    aria-describedby="generic-url-help"
+                >
+                <p id="generic-url-help" class="text-xs text-gray-500 mt-1">Enter the HTTPS URL of the API endpoint</p>
+                <div id="generic-url-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+            </div>
+            
+            <div>
+                <label for="generic-method" class="block text-sm font-medium text-gray-300 mb-2">
+                    HTTP Method
+                </label>
+                <select 
+                    id="generic-method" 
+                    name="generic_method"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                </select>
+            </div>
+            
+            <div>
+                <label for="json-path" class="block text-sm font-medium text-gray-300 mb-2">
+                    JSON Path <span class="text-red-400">*</span>
+                </label>
+                <input 
+                    type="text" 
+                    id="json-path" 
+                    name="json_path"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
+                    placeholder="$.data.value"
+                    aria-describedby="json-path-help"
+                >
+                <p id="json-path-help" class="text-xs text-gray-500 mt-1">JSONPath expression to extract the numeric value from the API response</p>
+                <div id="json-path-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+            </div>
+            
+            <div>
+                <label for="generic-headers" class="block text-sm font-medium text-gray-300 mb-2">
+                    HTTP Headers (Optional)
+                </label>
+                <textarea 
+                    id="generic-headers" 
+                    name="generic_headers"
+                    rows="3"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                    placeholder='{"Authorization": "Bearer your-token", "Content-Type": "application/json"}'
+                    aria-describedby="generic-headers-help"
+                ></textarea>
+                <p id="generic-headers-help" class="text-xs text-gray-500 mt-1">JSON object with HTTP headers (optional). Sensitive values will be encrypted.</p>
+                <div id="generic-headers-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Schedule Configuration -->
+    <div id="schedule-section" class="space-y-4 hidden">
+        <h3 class="text-lg font-medium text-white border-b border-gray-600 pb-2">Schedule Configuration</h3>
+        
+        <div>
+            <label for="cron-schedule" class="block text-sm font-medium text-gray-300 mb-2">
+                Cron Schedule <span class="text-red-400">*</span>
+            </label>
+            <div class="flex space-x-2">
+                <input 
+                    type="text" 
+                    id="cron-schedule" 
+                    name="cron_schedule"
+                    class="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
+                    placeholder="0 9 * * *"
+                    aria-describedby="cron-schedule-help"
+                >
+                <button 
+                    type="button" 
+                    id="validate-cron-btn"
+                    class="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                    Validate
+                </button>
+            </div>
+            <p id="cron-schedule-help" class="text-xs text-gray-500 mt-1">
+                Cron expression for scheduling (minute hour day month weekday). 
+                <button type="button" id="cron-help-btn" class="text-blue-400 hover:text-blue-300 underline">Show examples</button>
+            </p>
+            <div id="cron-validation-result" class="text-xs mt-1 hidden"></div>
+            <div id="cron-schedule-error" class="text-red-400 text-xs mt-1 hidden" role="alert"></div>
+        </div>
+        
+        <!-- Cron Examples (Hidden by default) -->
+        <div id="cron-examples" class="bg-gray-700 rounded-lg p-3 text-xs text-gray-300 hidden">
+            <p class="font-medium mb-2">Common Cron Examples:</p>
+            <ul class="space-y-1">
+                <li><code class="bg-gray-800 px-1 rounded">0 9 * * *</code> - Every day at 9:00 AM</li>
+                <li><code class="bg-gray-800 px-1 rounded">0 */6 * * *</code> - Every 6 hours</li>
+                <li><code class="bg-gray-800 px-1 rounded">0 9 * * 1-5</code> - Weekdays at 9:00 AM</li>
+                <li><code class="bg-gray-800 px-1 rounded">0 0 1 * *</code> - First day of every month</li>
+                <li><code class="bg-gray-800 px-1 rounded">*/15 * * * *</code> - Every 15 minutes</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Form Actions -->
+    <div class="flex justify-end space-x-3 pt-6 border-t border-gray-600">
+        <button 
+            type="button" 
+            id="test-config-btn"
+            class="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled
+        >
+            Test Configuration
+        </button>
+        <button 
+            type="button" 
+            onclick="window.hideJobForm()"
+            class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500"
+        >
+            Cancel
+        </button>
+        <button 
+            type="submit" 
+            id="create-job-submit"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled
+        >
+            Create Job
+        </button>
+    </div>
+</form>
+
+<script>
+// Job form functionality
+let jobFormHandler = null;
+
+function initializeJobFormHandler() {
+    if (jobFormHandler) return; // Already initialized
+    
+    jobFormHandler = {
+        form: document.getElementById('job-form'),
+        
+        init(preSelectTrackerId = null) {
+            this.loadTrackers(preSelectTrackerId);
+            this.setupEventListeners();
+            this.resetForm();
+        },
+        
+        setupEventListeners() {
+            // Job type change
+            document.getElementById('job-type').addEventListener('change', (e) => {
+                this.handleJobTypeChange(e.target.value);
+            });
+            
+            // Stock provider change
+            document.getElementById('stock-provider').addEventListener('change', (e) => {
+                this.handleProviderChange(e.target.value);
+            });
+            
+            // Form validation on input
+            this.form.addEventListener('input', () => {
+                this.validateForm();
+            });
+            
+            // Form submission
+            this.form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.submitForm();
+            });
+            
+            // Cron validation
+            document.getElementById('validate-cron-btn').addEventListener('click', () => {
+                this.validateCronExpression();
+            });
+            
+            // Cron help toggle
+            document.getElementById('cron-help-btn').addEventListener('click', () => {
+                this.toggleCronExamples();
+            });
+            
+            // Test configuration
+            document.getElementById('test-config-btn').addEventListener('click', () => {
+                this.testConfiguration();
+            });
+            
+            // API key help links
+            document.getElementById('api-key-help-link').addEventListener('click', (e) => {
+                e.preventDefault();
+                this.showApiKeyHelp();
+            });
+            
+            // Stock symbol uppercase
+            document.getElementById('stock-symbol').addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase();
+            });
+        },
+        
+        async loadTrackers(preSelectTrackerId = null) {
+            try {
+                const response = await fetch('/web/trackers/data');
+                if (!response.ok) throw new Error('Failed to load trackers');
+                
+                const data = await response.json();
+                const select = document.getElementById('tracker-select');
+                
+                // Clear existing options except the first one
+                select.innerHTML = '<option value="">Select tracker...</option>';
+                
+                // Show all trackers (allow multiple jobs per tracker)
+                const availableTrackers = data.trackers;
+                
+                if (availableTrackers.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No trackers available';
+                    option.disabled = true;
+                    select.appendChild(option);
+                } else {
+                    availableTrackers.forEach(tracker => {
+                        const option = document.createElement('option');
+                        option.value = tracker.id;
+                        option.textContent = `${tracker.name}${tracker.has_jobs ? ` (${tracker.job_count} job${tracker.job_count !== 1 ? 's' : ''})` : ''}`;
+                        select.appendChild(option);
+                    });
+                    
+                    // Pre-select tracker if specified
+                    if (preSelectTrackerId) {
+                        select.value = preSelectTrackerId;
+                        // Trigger change event to update form state
+                        select.dispatchEvent(new Event('change'));
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error loading trackers:', error);
+                if (window.TrackerUI && window.TrackerUI.showToast) {
+                    window.TrackerUI.showToast('Failed to load trackers', 'error');
+                } else {
+                    console.error('Failed to load trackers');
+                }
+            }
+        },
+        
+        handleJobTypeChange(jobType) {
+            const configSection = document.getElementById('job-config-section');
+            const stockConfig = document.getElementById('stock-config');
+            const genericConfig = document.getElementById('generic-config');
+            const scheduleSection = document.getElementById('schedule-section');
+            
+            // Hide all config sections first
+            stockConfig.classList.add('hidden');
+            genericConfig.classList.add('hidden');
+            
+            if (jobType) {
+                configSection.classList.remove('hidden');
+                scheduleSection.classList.remove('hidden');
+                
+                if (jobType === 'stock') {
+                    stockConfig.classList.remove('hidden');
+                } else if (jobType === 'generic') {
+                    genericConfig.classList.remove('hidden');
+                }
+            } else {
+                configSection.classList.add('hidden');
+                scheduleSection.classList.add('hidden');
+            }
+            
+            this.validateForm();
+        },
+        
+        handleProviderChange(provider) {
+            const apiKeySection = document.getElementById('api-key-section');
+            const apiKeyInput = document.getElementById('stock-api-key');
+            const helpLink = document.getElementById('api-key-help-link');
+            
+            if (provider === 'alpha_vantage' || provider === 'iex_cloud') {
+                apiKeySection.classList.remove('hidden');
+                apiKeyInput.required = true;
+                
+                if (provider === 'alpha_vantage') {
+                    helpLink.href = 'https://www.alphavantage.co/support/#api-key';
+                    helpLink.textContent = 'Get Alpha Vantage API key';
+                } else if (provider === 'iex_cloud') {
+                    helpLink.href = 'https://iexcloud.io/';
+                    helpLink.textContent = 'Get IEX Cloud API key';
+                }
+            } else {
+                apiKeySection.classList.add('hidden');
+                apiKeyInput.required = false;
+            }
+            
+            this.validateForm();
+        },
+        
+        validateForm() {
+            const jobType = document.getElementById('job-type').value;
+            const trackerId = document.getElementById('tracker-select').value;
+            const cronSchedule = document.getElementById('cron-schedule').value;
+            
+            let isValid = jobType && trackerId && cronSchedule;
+            
+            // Additional validation based on job type
+            if (jobType === 'stock') {
+                const symbol = document.getElementById('stock-symbol').value;
+                const provider = document.getElementById('stock-provider').value;
+                const apiKey = document.getElementById('stock-api-key').value;
+                
+                isValid = isValid && symbol && provider;
+                if (provider === 'alpha_vantage' || provider === 'iex_cloud') {
+                    isValid = isValid && apiKey;
+                }
+            } else if (jobType === 'generic') {
+                const url = document.getElementById('generic-url').value;
+                const jsonPath = document.getElementById('json-path').value;
+                
+                isValid = isValid && url && jsonPath;
+            }
+            
+            // Enable/disable buttons
+            document.getElementById('create-job-submit').disabled = !isValid;
+            document.getElementById('test-config-btn').disabled = !isValid;
+        },
+        
+        async validateCronExpression() {
+            const cronInput = document.getElementById('cron-schedule');
+            const resultDiv = document.getElementById('cron-validation-result');
+            const cronExpression = cronInput.value.trim();
+            
+            if (!cronExpression) {
+                resultDiv.className = 'text-red-400 text-xs mt-1';
+                resultDiv.textContent = 'Please enter a cron expression';
+                resultDiv.classList.remove('hidden');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/web/jobs/validate/cron', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        cron_expression: cronExpression
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.valid) {
+                    resultDiv.className = 'text-green-400 text-xs mt-1';
+                    resultDiv.textContent = `✓ Valid: ${data.description}`;
+                } else {
+                    resultDiv.className = 'text-red-400 text-xs mt-1';
+                    resultDiv.textContent = `✗ Invalid: ${data.error}`;
+                }
+                
+                resultDiv.classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Error validating cron expression:', error);
+                resultDiv.className = 'text-red-400 text-xs mt-1';
+                resultDiv.textContent = 'Failed to validate cron expression';
+                resultDiv.classList.remove('hidden');
+            }
+        },
+        
+        toggleCronExamples() {
+            const examples = document.getElementById('cron-examples');
+            examples.classList.toggle('hidden');
+        },
+        
+        async testConfiguration() {
+            const config = this.getFormData();
+            
+            try {
+                TrackerUI.showLoading();
+                
+                const response = await fetch('/web/jobs/test/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        job_type: config.job_type,
+                        config: config.config,
+                        cron_schedule: config.cron_schedule,
+                        use_mocks: true
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.overall_valid) {
+                    TrackerUI.showToast('Configuration test passed!', 'success');
+                    
+                    // Show test value if available
+                    if (data.execution_test && data.execution_test.test_value !== null && data.execution_test.test_value !== undefined) {
+                        TrackerUI.showToast(`Test value extracted: ${data.execution_test.test_value}`, 'info', 5000);
+                    }
+                    
+                    // Show any recommendations
+                    if (data.recommendations && data.recommendations.length > 0) {
+                        const recommendations = data.recommendations.join('; ');
+                        TrackerUI.showToast(`Recommendations: ${recommendations}`, 'info', 8000);
+                    }
+                } else {
+                    // Collect all error messages
+                    let errorMessages = [];
+                    
+                    if (data.config_validation && data.config_validation.errors) {
+                        errorMessages = errorMessages.concat(data.config_validation.errors);
+                    }
+                    
+                    if (data.cron_validation && data.cron_validation.errors) {
+                        errorMessages = errorMessages.concat(data.cron_validation.errors);
+                    }
+                    
+                    if (data.execution_test && data.execution_test.error_message) {
+                        errorMessages.push(data.execution_test.error_message);
+                    }
+                    
+                    const errorMessage = errorMessages.length > 0 
+                        ? errorMessages.join('; ') 
+                        : 'Configuration test failed';
+                    
+                    TrackerUI.showToast('Configuration test failed: ' + errorMessage, 'error', 8000);
+                }
+                
+            } catch (error) {
+                console.error('Error testing configuration:', error);
+                TrackerUI.showToast('Failed to test configuration: ' + error.message, 'error');
+            } finally {
+                TrackerUI.hideLoading();
+            }
+        },
+        
+        getFormData() {
+            const jobType = document.getElementById('job-type').value;
+            const formData = {
+                name: document.getElementById('job-name').value.trim(),
+                job_type: jobType,
+                tracker_id: parseInt(document.getElementById('tracker-select').value),
+                cron_schedule: document.getElementById('cron-schedule').value.trim(),
+                config: {}
+            };
+            
+            if (jobType === 'stock') {
+                formData.config = {
+                    symbol: document.getElementById('stock-symbol').value.trim().toUpperCase(),
+                    provider: document.getElementById('stock-provider').value
+                };
+                
+                const apiKey = document.getElementById('stock-api-key').value.trim();
+                if (apiKey) {
+                    formData.config.api_key = apiKey;
+                }
+            } else if (jobType === 'generic') {
+                formData.config = {
+                    url: document.getElementById('generic-url').value.trim(),
+                    method: document.getElementById('generic-method').value,
+                    json_path: document.getElementById('json-path').value.trim()
+                };
+                
+                const headers = document.getElementById('generic-headers').value.trim();
+                if (headers) {
+                    try {
+                        formData.config.headers = JSON.parse(headers);
+                    } catch (e) {
+                        // Invalid JSON, ignore headers
+                    }
+                }
+            }
+            
+            return formData;
+        },
+        
+        async submitForm() {
+            const formData = this.getFormData();
+            
+            try {
+                TrackerUI.showLoading();
+                
+                const response = await fetch('/api/jobs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                TrackerUI.showToast('Job created successfully!', 'success');
+                
+                // Close form and refresh page
+                window.hideJobForm();
+                setTimeout(() => window.location.reload(), 1000);
+                
+            } catch (error) {
+                console.error('Error creating job:', error);
+                TrackerUI.showToast('Failed to create job: ' + error.message, 'error');
+            } finally {
+                TrackerUI.hideLoading();
+            }
+        },
+        
+        showApiKeyHelp() {
+            const provider = document.getElementById('stock-provider').value;
+            let helpText = '';
+            
+            if (provider === 'alpha_vantage') {
+                helpText = 'Get your free Alpha Vantage API key at https://www.alphavantage.co/support/#api-key';
+            } else if (provider === 'iex_cloud') {
+                helpText = 'Get your IEX Cloud API key at https://iexcloud.io/';
+            } else {
+                helpText = 'API key help not available for this provider';
+            }
+            
+            TrackerUI.showToast(helpText, 'info', 8000);
+        },
+        
+        resetForm() {
+            this.form.reset();
+            document.getElementById('job-config-section').classList.add('hidden');
+            document.getElementById('schedule-section').classList.add('hidden');
+            document.getElementById('stock-config').classList.add('hidden');
+            document.getElementById('generic-config').classList.add('hidden');
+            document.getElementById('api-key-section').classList.add('hidden');
+            document.getElementById('cron-examples').classList.add('hidden');
+            document.getElementById('cron-validation-result').classList.add('hidden');
+            
+            // Clear all error messages
+            document.querySelectorAll('[id$="-error"]').forEach(el => {
+                el.classList.add('hidden');
+                el.textContent = '';
+            });
+            
+            this.validateForm();
+        }
+    };
+    
+    jobFormHandler.init();
+    
+    // Make the handler globally available
+    window.jobFormHandler = jobFormHandler;
+}
+
+// Make the handler globally available
+window.initializeJobFormHandler = initializeJobFormHandler;
+</script>
